@@ -1,0 +1,46 @@
+/// Kumpulan path endpoint REST API. Base URL diatur terpisah di
+/// AppConstants.baseUrl / DioClient. Sesuaikan saat backend Laravel
+/// sudah tersedia — struktur ini mengikuti konvensi resource Laravel.
+abstract class ApiEndpoints {
+  ApiEndpoints._();
+
+  // Auth
+  static const String login = '/auth/login';
+  static const String logout = '/auth/logout';
+  static const String refreshToken = '/auth/refresh';
+  static const String me = '/auth/me';
+
+  // Users
+  static const String users = '/users';
+  static String userById(String id) => '/users/$id';
+  static String resetPassword(String id) => '/users/$id/reset-password';
+
+  // Customers
+  static const String customers = '/customers';
+  static String customerById(String id) => '/customers/$id';
+
+  // Services
+  static const String services = '/services';
+  static String serviceById(String id) => '/services/$id';
+
+  // Transactions
+  static const String transactions = '/transactions';
+  static String transactionById(String id) => '/transactions/$id';
+  static String transactionByInvoice(String invoice) =>
+      '/transactions/invoice/$invoice';
+  static String updateStatus(String id) => '/transactions/$id/status';
+  static String payment(String id) => '/transactions/$id/payment';
+
+  // Dashboard & Reports
+  static const String dashboardOwner = '/dashboard/owner';
+  static const String dashboardKasir = '/dashboard/kasir';
+  static const String reportsRevenue = '/reports/revenue';
+  static const String reportsStatistics = '/reports/statistics';
+  static const String reportsExportPdf = '/reports/export/pdf';
+  static const String reportsExportExcel = '/reports/export/excel';
+
+  // Settings
+  static const String settings = '/settings';
+  static const String backup = '/settings/backup';
+  static const String restore = '/settings/restore';
+}
