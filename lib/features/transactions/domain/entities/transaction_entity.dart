@@ -1,6 +1,14 @@
 import 'package:equatable/equatable.dart';
 
-enum LaundryStatus { received, washing, drying, ironing, completed, collected }
+enum LaundryStatus {
+  received,
+  washing,
+  drying,
+  ironing,
+  completed,
+  collected,
+  late
+}
 
 enum PaymentMethod { cash, qris, transfer }
 
@@ -14,6 +22,7 @@ extension LaundryStatusLabel on LaundryStatus {
         LaundryStatus.ironing => 'Disetrika',
         LaundryStatus.completed => 'Selesai',
         LaundryStatus.collected => 'Sudah Diambil',
+        LaundryStatus.late => 'Telat',
       };
 }
 
@@ -37,6 +46,7 @@ class TransactionEntity extends Equatable {
   final String id;
   final String invoice;
   final String customerId;
+  final String? serviceId;
   final String customerName;
   final String customerPhone;
   final String serviceName;
@@ -57,6 +67,7 @@ class TransactionEntity extends Equatable {
     required this.id,
     required this.invoice,
     required this.customerId,
+    this.serviceId,
     required this.customerName,
     required this.customerPhone,
     required this.serviceName,
@@ -76,16 +87,43 @@ class TransactionEntity extends Equatable {
 
   int get remainingPayment => total - paidAmount;
 
+  LaundryStatus resolveLaundryStatusAt(DateTime currentTime) {
+    if (laundryStatus == LaundryStatus.collected) {
+      return LaundryStatus.collected;
+    }
+
+    final lateThreshold = estimatedFinishAt.add(
+      Duration(hours: estimatedFinishAt.difference(createdAt).inHours),
+    );
+
+    if (currentTime.isAfter(lateThreshold)) {
+      return LaundryStatus.late;
+    }
+
+    if (currentTime.isAfter(estimatedFinishAt) ||
+        currentTime.isAtSameMomentAs(estimatedFinishAt)) {
+      return LaundryStatus.completed;
+    }
+
+    if (currentTime.isAfter(createdAt)) {
+      return LaundryStatus.washing;
+    }
+
+    return LaundryStatus.received;
+  }
+
   TransactionEntity copyWith({
     int? paidAmount,
     PaymentMethod? paymentMethod,
     PaymentStatus? paymentStatus,
     LaundryStatus? laundryStatus,
+    String? notes,
   }) =>
       TransactionEntity(
         id: id,
         invoice: invoice,
         customerId: customerId,
+        serviceId: serviceId,
         customerName: customerName,
         customerPhone: customerPhone,
         serviceName: serviceName,
@@ -100,7 +138,7 @@ class TransactionEntity extends Equatable {
         laundryStatus: laundryStatus ?? this.laundryStatus,
         createdAt: createdAt,
         estimatedFinishAt: estimatedFinishAt,
-        notes: notes,
+        notes: notes ?? this.notes,
       );
 
   @override

@@ -12,38 +12,46 @@ class MockMasterDataRepository implements MasterDataRepository {
   final _uuid = const Uuid();
   final List<CustomerEntity> _customers = [
     const CustomerEntity(
-        id: 'cust-001',
-        name: 'Andi Pratama',
-        phone: '081234567890',
-        address: 'Jl. Melati No. 12',),
+      id: 'cust-001',
+      name: 'Andi Pratama',
+      phone: '081234567890',
+      address: 'Jl. Melati No. 12',
+    ),
     const CustomerEntity(
-        id: 'cust-002', name: 'Dewi Lestari', phone: '081298765432',),
+      id: 'cust-002',
+      name: 'Dewi Lestari',
+      phone: '081298765432',
+    ),
   ];
   final List<LaundryServiceEntity> _services = [
     const LaundryServiceEntity(
-        id: 'svc-001',
-        name: 'Cuci Lipat',
-        price: 7000,
-        estimatedHours: 48,
-        pricingType: PricingType.perKg,),
+      id: 'svc-001',
+      name: 'Cuci Lipat',
+      price: 7000,
+      estimatedHours: 48,
+      unit: 'kg',
+    ),
     const LaundryServiceEntity(
-        id: 'svc-002',
-        name: 'Cuci Setrika',
-        price: 9000,
-        estimatedHours: 48,
-        pricingType: PricingType.perKg,),
+      id: 'svc-002',
+      name: 'Cuci Setrika',
+      price: 9000,
+      estimatedHours: 48,
+      unit: 'kg',
+    ),
     const LaundryServiceEntity(
-        id: 'svc-003',
-        name: 'Setrika',
-        price: 6000,
-        estimatedHours: 24,
-        pricingType: PricingType.perKg,),
+      id: 'svc-003',
+      name: 'Setrika',
+      price: 6000,
+      estimatedHours: 24,
+      unit: 'kg',
+    ),
     const LaundryServiceEntity(
-        id: 'svc-004',
-        name: 'Dry Cleaning',
-        price: 25000,
-        estimatedHours: 72,
-        pricingType: PricingType.perItem,),
+      id: 'svc-004',
+      name: 'Dry Cleaning',
+      price: 25000,
+      estimatedHours: 72,
+      unit: 'item',
+    ),
   ];
 
   @override
@@ -58,7 +66,8 @@ class MockMasterDataRepository implements MasterDataRepository {
             name: customer.name,
             phone: customer.phone,
             address: customer.address,
-            notes: customer.notes,)
+            notes: customer.notes,
+          )
         : customer;
     final index = _customers.indexWhere((value) => value.id == item.id);
     if (index < 0) {
@@ -70,20 +79,35 @@ class MockMasterDataRepository implements MasterDataRepository {
   }
 
   @override
+  Future<Result<void>> deleteCustomer(String id) async {
+    _customers.removeWhere((item) => item.id == id);
+    return const Success(null);
+  }
+
+  @override
   Future<Result<List<LaundryServiceEntity>>> getServices() async =>
       Success(List.unmodifiable(_services));
 
   @override
+  Future<Result<void>> deleteService(String id) async {
+    _services.removeWhere((item) => item.id == id);
+    return const Success(null);
+  }
+
+  @override
   Future<Result<LaundryServiceEntity>> saveService(
-      LaundryServiceEntity service,) async {
+    LaundryServiceEntity service,
+  ) async {
     final item = service.id.isEmpty
         ? LaundryServiceEntity(
             id: _uuid.v4(),
             name: service.name,
             price: service.price,
             estimatedHours: service.estimatedHours,
-            pricingType: service.pricingType,
-            isActive: service.isActive,)
+            estimateUnit: service.estimateUnit,
+            unit: service.unit,
+            isActive: service.isActive,
+          )
         : service;
     final index = _services.indexWhere((value) => value.id == item.id);
     if (index < 0) {

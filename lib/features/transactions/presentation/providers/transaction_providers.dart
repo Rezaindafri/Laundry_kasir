@@ -1,15 +1,26 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/network/dio_client.dart';
 import '../../../../core/utils/result.dart';
+import '../../data/datasources/transaction_remote_datasource.dart';
 import '../../data/repositories/mock_transaction_repository.dart';
+import '../../data/repositories/transaction_repository_impl.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../../domain/repositories/transaction_repository.dart';
 
-final transactionRepositoryProvider =
-    Provider<TransactionRepository>((ref) => MockTransactionRepository());
+final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
+  if (AppConstants.useMockApi) {
+    return MockTransactionRepository();
+  }
+  return TransactionRepositoryImpl(
+    remoteDataSource: TransactionRemoteDataSourceImpl(DioClient().dio),
+  );
+});
 final transactionsProvider =
     AsyncNotifierProvider<TransactionsNotifier, List<TransactionEntity>>(
-        TransactionsNotifier.new,);
+  TransactionsNotifier.new,
+);
 
 class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
   @override
@@ -17,18 +28,30 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
     final result =
         await ref.read(transactionRepositoryProvider).getTransactions();
     return result.when(
-        success: (items) => items, error: (failure) => throw failure,);
+      success: (items) => items,
+      error: (failure) => throw failure,
+    );
   }
 
   Future<Result<TransactionEntity>> create(
-      TransactionEntity transaction,) async {
+    TransactionEntity transaction,
+  ) async {
     final result =
         await ref.read(transactionRepositoryProvider).create(transaction);
-    result.when(
-      success: (item) => state =
-          AsyncData(<TransactionEntity>[item, ...(state.valueOrNull ?? [])]),
-      error: (_) {},
-    );
+
+    switch (result) {
+      case Success<TransactionEntity>(:final data):
+        final refreshed =
+            await ref.read(transactionRepositoryProvider).getTransactions();
+        refreshed.when(
+          success: (items) => state = AsyncData(items),
+          error: (_) => state =
+              AsyncData(<TransactionEntity>[data, ...(state.valueOrNull ?? [])]),
+        );
+      case Error<TransactionEntity>():
+        break;
+    }
+
     return result;
   }
 
@@ -42,6 +65,20 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
         final items = <TransactionEntity>[...(state.valueOrNull ?? [])];
         final index = items.indexWhere((value) => value.id == item.id);
         if (index >= 0) items[index] = item;
+        state = AsyncData(items);
+      },
+      error: (_) {},
+    );
+    return result;
+  }
+
+  Future<Result<void>> deleteTransaction(String id) async {
+    final result = await ref.read(transactionRepositoryProvider).delete(id);
+    result.when(
+      success: (_) {
+        final items = (state.valueOrNull ?? [])
+            .where((item) => item.id != id)
+            .toList();
         state = AsyncData(items);
       },
       error: (_) {},

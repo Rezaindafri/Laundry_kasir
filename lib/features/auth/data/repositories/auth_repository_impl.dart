@@ -27,18 +27,16 @@ class AuthRepositoryImpl implements AuthRepository {
         password: password,
       );
 
-      // Tanpa "Ingat saya", sesi hanya hidup di memori provider hingga
-      // aplikasi ditutup. Token tidak boleh tertinggal di perangkat.
-      if (rememberMe) {
-        await localDataSource.saveSession(
-          accessToken: response.accessToken,
-          refreshToken: response.refreshToken,
-          user: response.user,
-          rememberMe: true,
-        );
-      } else {
-        await localDataSource.clearSession();
-      }
+      // Selalu simpan token saat login agar request API berikutnya tetap
+      // memakai Authorization header selama sesi aplikasi aktif.
+      // "Ingat saya" hanya menentukan apakah token dan user ditahan
+      // untuk auto-login ketika aplikasi dibuka kembali.
+      await localDataSource.saveSession(
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+        user: response.user,
+        rememberMe: rememberMe,
+      );
 
       return Success(response.user.toEntity());
     } on ServerException catch (e) {

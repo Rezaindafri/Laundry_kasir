@@ -48,4 +48,10 @@ class MockTransactionRepository implements TransactionRepository {
     if (index >= 0) _items[index] = transaction;
     return Success(transaction);
   }
+
+  @override
+  Future<Result<void>> delete(String id) async {
+    _items.removeWhere((item) => item.id == id);
+    return const Success(null);
+  }
 }

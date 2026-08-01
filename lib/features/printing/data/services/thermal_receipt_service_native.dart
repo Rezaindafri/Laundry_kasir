@@ -10,12 +10,29 @@ class ThermalReceiptService {
     symbol: 'Rp',
     decimalDigits: 0,
   );
-  static final _date = DateFormat('dd/MM/yy');
+  static final _dateTime = DateFormat('dd/MM/yy HH:mm', 'id_ID');
+
+  static String buildEstimateSummary(TransactionEntity transaction) {
+    final diff = transaction.estimatedFinishAt.difference(transaction.createdAt);
+    final totalHours = diff.inHours;
+    if (totalHours <= 0) return 'segera';
+
+    final days = totalHours ~/ 24;
+    final hours = totalHours % 24;
+    if (days > 0 && hours > 0) {
+      return '$days hari $hours jam';
+    }
+    if (days > 0) {
+      return '$days hari';
+    }
+    return '$totalHours jam';
+  }
 
   Future<List<int>> buildReceipt(
     TransactionEntity transaction, {
     String businessName = 'CLEAN FRESH LAUNDRY',
   }) async {
+    final printedAt = DateTime.now();
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
     final bytes = <int>[];
@@ -59,7 +76,7 @@ class ThermalReceiptService {
       generator.row([
         PosColumn(text: 'Masuk', width: 6),
         PosColumn(
-          text: _date.format(transaction.createdAt),
+          text: _dateTime.format(transaction.createdAt),
           width: 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
@@ -67,9 +84,19 @@ class ThermalReceiptService {
     );
     bytes.addAll(
       generator.row([
-        PosColumn(text: 'Selesai', width: 6),
+        PosColumn(text: 'Estimasi', width: 6),
         PosColumn(
-          text: _date.format(transaction.estimatedFinishAt),
+          text: _dateTime.format(transaction.estimatedFinishAt),
+          width: 6,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]),
+    );
+    bytes.addAll(
+      generator.row([
+        PosColumn(text: 'Bon', width: 6),
+        PosColumn(
+          text: _dateTime.format(printedAt),
           width: 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
@@ -91,6 +118,16 @@ class ThermalReceiptService {
         PosColumn(text: 'Jumlah', width: 5),
         PosColumn(
           text: '${transaction.quantity} ${transaction.quantityUnit}',
+          width: 7,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]),
+    );
+    bytes.addAll(
+      generator.row([
+        PosColumn(text: 'Estimasi', width: 5),
+        PosColumn(
+          text: buildEstimateSummary(transaction),
           width: 7,
           styles: const PosStyles(align: PosAlign.right),
         ),

@@ -94,14 +94,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-          path: AppRoutes.customers,
-          builder: (context, state) => const CustomersScreen(),),
+        path: AppRoutes.customers,
+        builder: (context, state) => const CustomersScreen(),
+      ),
       GoRoute(
-          path: AppRoutes.transactions,
-          builder: (context, state) => const TransactionsScreen(),),
+        path: AppRoutes.transactions,
+        builder: (context, state) => const TransactionsScreen(),
+      ),
       GoRoute(
-          path: AppRoutes.qrScanner,
-          builder: (context, state) => const QrScannerScreen(),),
+        path: AppRoutes.qrScanner,
+        builder: (context, state) => const QrScannerScreen(),
+      ),
       GoRoute(
         path: AppRoutes.reports,
         redirect: (context, state) =>
@@ -120,8 +123,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const UserManagementScreen(),
       ),
       GoRoute(
-          path: AppRoutes.settings,
-          builder: (context, state) => const SettingsScreen(),),
+        path: AppRoutes.settings,
+        builder: (context, state) => const SettingsScreen(),
+      ),
       GoRoute(
         path: AppRoutes.services,
         redirect: (context, state) {

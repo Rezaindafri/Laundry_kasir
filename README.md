@@ -100,5 +100,50 @@ yang sama seperti `auth`):
 9. **Backend Laravel**: REST API + MySQL menggantikan mock (kontrak
    endpoint sudah didefinisikan di `lib/core/network/api_endpoints.dart`)
 
-Beri tahu saya modul mana yang ingin dibangun berikutnya (disarankan:
-**Pelanggan & Layanan** dulu, karena jadi dependency form Transaksi).
+lanjutan udah selesai sudah menyelesaikan 5 tahap implementasi lokal/mock.
+
+1. Fondasi aplikasi Clean Architecture, Riverpod, GoRouter, Material 3 hijau. Auth mock: Splash, Login, Logout, JWT mock, Remember Login. Tiga role: Super Owner, Owner, Kasir; dashboard dan menu menyesuaikan akses.
+
+2. Master data Pelanggan: lihat, tambah, edit. Layanan laundry: lihat, tambah, edit, harga, estimasi, per Kg/per Item.
+
+3. POS & transaksi Transaksi baru: pelanggan, layanan, berat/jumlah, Express, catatan. Hitung subtotal, biaya Express, total. Metode pembayaran Tunai/QRIS/Transfer serta status Belum Bayar/DP/Lunas. Detail dan update status laundry.
+
+4. Riwayat & QR Daftar transaksi sebagai riwayat. QR invoice sebagai kode pengambilan. Scan QR dengan kamera untuk membuka transaksi.
+
+5. Administrasi & cetak bon Laporan ringkas pendapatan/operasional dari transaksi. Manajemen akun Owner/Kasir berbasis role. Pengaturan profil laundry, ukuran kertas, dan MAC printer default. Cetak bon ESC/POS 58 mm melalui Bluetooth.
+
+
+
+TERBARU 02/02/2026
+feat: Integrasi Penuh API Transaksi, Master Data, dan Logika Status Otomatis
+
+Pembaruan ini mencakup penyelesaian integrasi aplikasi mobile (Flutter) dengan backend (Laravel), perbaikan UI/UX pada modul transaksi, serta pembersihan kode. Aplikasi sekarang sudah berjalan lancar dan aman dengan data dari server lokal.
+
+### 🔗 Integrasi Backend & Auth
+* Mengatur ulang IP backend ke `192.168.1.12` dan memastikan koneksi Flutter ↔ Laravel berjalan dengan baik[cite: 3, 4].
+* Memperbaiki sistem autentikasi dan session; token Bearer kini lebih stabil dan tidak cepat hilang meskipun fitur "remember me" dimatikan[cite: 3].
+
+### 👥 Master Data (Pelanggan & Layanan)
+* Menghubungkan fitur pelanggan sepenuhnya ke backend untuk proses Read dan Create[cite: 3].
+* Menambahkan kemampuan untuk membuka detail pelanggan langsung dari daftar pelanggan[cite: 3].
+* Memperbarui entitas dan model Layanan untuk mendukung *field* satuan estimasi menggunakan *enum*, yang dapat dipilih langsung oleh *owner* di UI[cite: 4].
+
+### 🛒 Modul Transaksi & Logika Bisnis
+* Memperbaiki *payload* transaksi agar kompatibel dengan validasi Laravel (mengirim `customer_id`, `payment_status`, dan `services` sebagai array yang memuat `service_id`, `qty`, dan `price`)[cite: 3].
+* Menyesuaikan *parser* transaksi agar respons dari backend langsung memuat relasi data pelanggan dan layanan[cite: 4].
+* Menambahkan logika status otomatis pada transaksi berbasis waktu estimasi (sebelum estimasi selesai = diproses, saat estimasi selesai = selesai, lewat batas = telat)[cite: 4].
+* Menambahkan opsi untuk menambah pelanggan baru secara langsung dari form pembuatan transaksi[cite: 3].
+* Memperbarui *provider* agar otomatis melakukan *refresh* daftar transaksi setelah transaksi baru berhasil dibuat[cite: 4].
+
+### 🎨 UI/UX & Fitur Filter
+* Menambahkan fungsionalitas UI untuk mengubah status menjadi "Lunas & Sudah Diambil" di halaman detail transaksi[cite: 4].
+* Menerapkan filter pencarian/kategori di halaman riwayat transaksi yang sinkron dengan status otomatis[cite: 4].
+* Memperbaiki *bug* navigasi saat kembali dari halaman tambah layanan di perangkat Android[cite: 4].
+
+### 🛠️ Pengujian & Pembersihan Kode (Chore)
+* Membersihkan *syntax*, menghapus *import* yang tidak terpakai, dan mengganti properti Flutter yang *deprecated*[cite: 4].
+* Lolos pengecekan `dart analyze` tanpa ada *error logic* maupun *style*[cite: 4].
+* Menambahkan dan memastikan uji regresi (*test*) untuk *payload* dan domain transaksi tetap lolos/valid[cite: 3, 4].
+
+**Catatan untuk Tim:**
+Secara umum *flow* transaksi dan pelanggan sudah terhubung dengan aman ke API[cite: 3]. Modul transaksi sekarang sudah cerdas dalam menghitung waktu estimasi dan merubah status secara otomatis.
