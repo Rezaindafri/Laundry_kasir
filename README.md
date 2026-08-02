@@ -119,31 +119,43 @@ feat: Integrasi Penuh API Transaksi, Master Data, dan Logika Status Otomatis
 
 Pembaruan ini mencakup penyelesaian integrasi aplikasi mobile (Flutter) dengan backend (Laravel), perbaikan UI/UX pada modul transaksi, serta pembersihan kode. Aplikasi sekarang sudah berjalan lancar dan aman dengan data dari server lokal.
 
-### 🔗 Integrasi Backend & Auth
-* Mengatur ulang IP backend ke `192.168.1.12` dan memastikan koneksi Flutter ↔ Laravel berjalan dengan baik[cite: 3, 4].
-* Memperbaiki sistem autentikasi dan session; token Bearer kini lebih stabil dan tidak cepat hilang meskipun fitur "remember me" dimatikan[cite: 3].
+feat: Integrasi Penuh API Transaksi, Master Data, dan Logika Status Otomatis
 
-### 👥 Master Data (Pelanggan & Layanan)
-* Menghubungkan fitur pelanggan sepenuhnya ke backend untuk proses Read dan Create[cite: 3].
-* Menambahkan kemampuan untuk membuka detail pelanggan langsung dari daftar pelanggan[cite: 3].
-* Memperbarui entitas dan model Layanan untuk mendukung *field* satuan estimasi menggunakan *enum*, yang dapat dipilih langsung oleh *owner* di UI[cite: 4].
+Pembaruan skala besar ini mencakup penyelesaian integrasi aplikasi Flutter dengan backend Laravel, perbaikan UI/UX, serta penyempurnaan alur transaksi. Aplikasi sekarang sudah berjalan stabil menggunakan data dari server lokal.
 
-### 🛒 Modul Transaksi & Logika Bisnis
-* Memperbaiki *payload* transaksi agar kompatibel dengan validasi Laravel (mengirim `customer_id`, `payment_status`, dan `services` sebagai array yang memuat `service_id`, `qty`, dan `price`)[cite: 3].
-* Menyesuaikan *parser* transaksi agar respons dari backend langsung memuat relasi data pelanggan dan layanan[cite: 4].
-* Menambahkan logika status otomatis pada transaksi berbasis waktu estimasi (sebelum estimasi selesai = diproses, saat estimasi selesai = selesai, lewat batas = telat)[cite: 4].
-* Menambahkan opsi untuk menambah pelanggan baru secara langsung dari form pembuatan transaksi[cite: 3].
-* Memperbarui *provider* agar otomatis melakukan *refresh* daftar transaksi setelah transaksi baru berhasil dibuat[cite: 4].
+### 🔗 Integrasi Backend, Auth & Konfigurasi
+* Mengatur endpoint API ke backend Laravel dan mengaktifkan izin internet serta cleartext traffic di Android.
+* Mengubah IP backend Flutter menjadi `192.168.1.12`.
+* Memperbaiki behavior penyimpanan token di secure storage; sesi kini tetap berlaku selama user aktif meski fitur "remember me" dimatikan, mencegah request API gagal (401)[cite: 3].
+* Bug logic kecil di repository transaksi berhasil dibetulkan.
 
-### 🎨 UI/UX & Fitur Filter
-* Menambahkan fungsionalitas UI untuk mengubah status menjadi "Lunas & Sudah Diambil" di halaman detail transaksi[cite: 4].
-* Menerapkan filter pencarian/kategori di halaman riwayat transaksi yang sinkron dengan status otomatis[cite: 4].
-* Memperbaiki *bug* navigasi saat kembali dari halaman tambah layanan di perangkat Android[cite: 4].
+### 👥 Master Data Pelanggan
+* Mengubah sumber data pelanggan dari mock/dummy menjadi data langsung dari API backend[cite: 3].
+* Menyesuaikan parsing data pelanggan dari format response API[cite: 3].
+* Menambahkan alur buka detail pelanggan langsung dari daftar pelanggan dan memperjelas tombol edit pelanggan[cite: 3].
+* Menambahkan opsi "Tambah pelanggan baru" langsung dari form pembuatan transaksi[cite: 3].
 
-### 🛠️ Pengujian & Pembersihan Kode (Chore)
-* Membersihkan *syntax*, menghapus *import* yang tidak terpakai, dan mengganti properti Flutter yang *deprecated*[cite: 4].
-* Lolos pengecekan `dart analyze` tanpa ada *error logic* maupun *style*[cite: 4].
-* Menambahkan dan memastikan uji regresi (*test*) untuk *payload* dan domain transaksi tetap lolos/valid[cite: 3, 4].
+### 📦 Master Data Layanan
+* Model layanan kini mendukung field satuan estimasi dengan enum[cite: 4].
+* UI owner sekarang bisa memilih satuan saat membuat atau menyunting layanan[cite: 4].
+* Memperbaiki error navigasi kembali (back navigation) saat membuka halaman tambah layanan di Android[cite: 4].
 
-**Catatan untuk Tim:**
-Secara umum *flow* transaksi dan pelanggan sudah terhubung dengan aman ke API[cite: 3]. Modul transaksi sekarang sudah cerdas dalam menghitung waktu estimasi dan merubah status secara otomatis.
+### 🛒 Modul Transaksi & Payload
+* Memperbaiki payload transaksi agar kompatibel dengan validasi Laravel, memastikan pengiriman `customer_id`, `payment_status`, dan `services` sebagai array yang memuat harga per item (`price`) dan kuantitas (`qty`)[cite: 3].
+* Menyesuaikan parser transaksi Flutter supaya response create/update ikut memuat relasi data `customer` dan `transactionDetails.service` dari backend[cite: 4].
+* Provider transaksi kini otomatis me-refresh ulang daftar dari backend setelah transaksi berhasil dibuat[cite: 4].
+* Menampilkan estimasi layanan pada UI transaksi dan juga pada bon/struk[cite: 4].
+* Memastikan field `estimation_hours` dan `estimation_unit` tetap kompatibel dengan payload backend[cite: 4].
+
+### 🔄 Logika Status Otomatis & UI
+* Status transaksi sekarang berkembang otomatis berdasarkan estimasi layanan yang dikonversi ke jam: diproses (sebelum estimasi selesai), selesai (saat estimasi selesai), dan telat (melewati batas)[cite: 4].
+* Menambahkan tombol "Lunas & Sudah Diambil" dengan logika cerdas: 
+  - Jika sudah lunas, tombol cukup menandai barang sudah diambil[cite: 4].
+  - Jika belum lunas, tombol menandai proses pengambilan namun tetap mempertahankan status pembayaran sebelumnya[cite: 4].
+* Sinkronisasi filter pencarian dan chip status di layar riwayat transaksi agar memakai status yang dihitung otomatis[cite: 4].
+
+### 🛠️ Pengujian & Validasi
+* Lolos pengecekan `dart analyze` tanpa ada error logic/style untuk file-file transaksi[cite: 4].
+* Mengganti properti Flutter yang deprecated dan merapikan syntax[cite: 4].
+* Lolos validasi `php -l` untuk controller Laravel tanpa syntax error[cite: 4].
+* Menambahkan uji regresi (test) untuk memastikan payload transaksi tetap sesuai struktur backend; semua pengujian domain entitas lolos.
