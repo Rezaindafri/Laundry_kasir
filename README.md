@@ -159,3 +159,11 @@ Pembaruan skala besar ini mencakup penyelesaian integrasi aplikasi Flutter denga
 * Mengganti properti Flutter yang deprecated dan merapikan syntax[cite: 4].
 * Lolos validasi `php -l` untuk controller Laravel tanpa syntax error[cite: 4].
 * Menambahkan uji regresi (test) untuk memastikan payload transaksi tetap sesuai struktur backend; semua pengujian domain entitas lolos.
+
+
+### Yang kau coba ganti
+Jadi nanti itu kau perlu setup ulang lagi, karena kan ini perlu backend. semisal kau gak mau pasang backend, kau bisa pakai dulu dummynya. Caranya:
+* masuk ke 'transaction_providers.dart'
+* Ubah status 'useMockApi' dari 'const bool useMockApi = false;' menjadi 'const bool useMockApi = true;'
+
+nah ntar tinggal jalani kek biasa
