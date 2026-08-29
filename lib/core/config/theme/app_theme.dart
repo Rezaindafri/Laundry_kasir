@@ -8,7 +8,7 @@ import 'app_text_styles.dart';
 abstract class AppTheme {
   AppTheme._();
 
-  static const double radius = 14;
+  static const double radius = 8;
 
   static ThemeData get light {
     final colorScheme = ColorScheme.fromSeed(
@@ -43,7 +43,7 @@ abstract class AppTheme {
       cardTheme: CardThemeData(
         color: AppColors.card,
         elevation: 0,
-        shadowColor: Colors.black.withValues(alpha: 0.06),
+        shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
         ),

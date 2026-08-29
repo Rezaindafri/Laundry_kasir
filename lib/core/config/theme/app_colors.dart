@@ -6,18 +6,18 @@ abstract class AppColors {
   AppColors._();
 
   // Brand
-  static const Color primary = Color(0xFF2E7D32);
-  static const Color primaryDark = Color(0xFF1B5E20);
-  static const Color secondary = Color(0xFF66BB6A);
+  static const Color primary = Color(0xFF12355B);
+  static const Color primaryDark = Color(0xFF0B2745);
+  static const Color secondary = Color(0xFFB9DDF5);
 
   // Surface
-  static const Color background = Color(0xFFF8F9FA);
+  static const Color background = Color(0xFFF8FAFC);
   static const Color card = Color(0xFFFFFFFF);
-  static const Color divider = Color(0xFFE0E0E0);
+  static const Color divider = Color(0xFFE5ECF3);
 
   // Text
-  static const Color textPrimary = Color(0xFF1B1B1B);
-  static const Color textSecondary = Color(0xFF6E6E6E);
+  static const Color textPrimary = Color(0xFF102A43);
+  static const Color textSecondary = Color(0xFF62758A);
   static const Color textOnPrimary = Color(0xFFFFFFFF);
 
   // Status Laundry

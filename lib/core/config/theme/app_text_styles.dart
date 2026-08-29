@@ -8,7 +8,7 @@ import 'app_colors.dart';
 abstract class AppTextStyles {
   AppTextStyles._();
 
-  static TextStyle get _base => GoogleFonts.plusJakartaSans();
+  static TextStyle get _base => GoogleFonts.inter();
 
   static TextStyle get displayLarge => _base.copyWith(
         fontSize: 32,
