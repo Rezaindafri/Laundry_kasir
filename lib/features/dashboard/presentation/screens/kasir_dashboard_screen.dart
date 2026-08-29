@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../../core/config/theme/app_colors.dart';
-import '../../../../core/router/app_router.dart';
+import '../../../transactions/presentation/screens/transactions_screen.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../widgets/dashboard_shell.dart';
 import '../widgets/dashboard_stat_card.dart';
@@ -65,7 +63,9 @@ class KasirDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: () => context.push(AppRoutes.transactions),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NewTransactionScreen()),
+              ),
               icon: const Icon(Icons.add),
               label: const Text('Transaksi Baru'),
               style: FilledButton.styleFrom(
