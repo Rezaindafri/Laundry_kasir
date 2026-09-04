@@ -13,7 +13,10 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(laundrySettingsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Pengaturan')),
+      appBar: AppBar(
+        title: const Text('Pengaturan'),
+        automaticallyImplyLeading: false,
+      ),
       body: settings.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>

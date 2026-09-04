@@ -59,6 +59,7 @@ Artinya, aplikasi sekarang diarahkan ke API server lokal real, bukan dummy.
 - Material 3 untuk design system
 - Dio untuk HTTP client
 - flutter_secure_storage dan shared_preferences untuk sesi/token
+- image_picker untuk mengambil bukti foto pengambilan
 - QR code scanner dan generator
 - Bluetooth thermal printer support
 - Intl untuk format angka/tanggal lokal Indonesia
@@ -105,6 +106,7 @@ Rute utama:
 - `/customers`
 - `/services`
 - `/transactions`
+- `/collections` (halaman Pengambilan/Pelunasan)
 - `/scan-qr`
 - `/reports`
 - `/users`
@@ -206,6 +208,14 @@ Semua dashboard menggunakan layout shell yang sama di `DashboardShell`, dengan:
 - drawer navigation
 - role-sensitive menu
 - tombol logout
+- bottom navigation yang tetap tampil pada halaman tab utama
+
+Bottom navigation dibedakan menurut role:
+
+- Kasir: Beranda, Transaksi, Scan QR, Pelanggan, Pengaturan.
+- Owner/Super Owner: Beranda, Transaksi, Scan QR, Laporan, Pengaturan.
+
+Tombol Scan QR berada di tengah sebagai tombol khusus yang lebih menonjol. Drawer (ikon burger) tetap dipertahankan sebagai akses seluruh menu, termasuk menu yang tidak berada di bottom navigation.
 
 ### Menu utama yang tergantung role
 
@@ -298,13 +308,13 @@ Ini adalah fitur paling penting dari sistem.
 - mengatur kondisi pembayaran (belum bayar, DP, lunas)
 - melihat estimasi selesai
 - melihat status laundry
-- melakukan update status transaksi
 - melihat transaksi sebelumnya
-- filter transaksi berdasarkan status
-- search transaksi
+- filter transaksi melalui tombol dropdown
+- filter periode pembuatan transaksi (tanggal dari--sampai)
+- pencarian invoice, pelanggan, nomor telepon, atau layanan
 - membuka detail transaksi
 - QR invoice
-- tombol bayar lunas / sudah diambil
+- proses pengambilan/pelunasan pada halaman khusus
 
 ### Data transaksi mencakup
 
@@ -336,14 +346,16 @@ Status yang dipetakan:
 Set di `TransactionsScreen`:
 
 - Semua
+- Hari Ini
 - Diterima
 - Diproses
 - Selesai
+- Belum Diambil
 - Sudah Diambil
 - Lunas
 - Belum Lunas
 
-Ini membantu user mengecek kondisi laundry secara cepat.
+Filter status dan periode dapat dipakai bersamaan. Tombol `Filter` berbentuk pill-outline berada di bawah search bar sisi kanan. Pada halaman Pengambilan, daftar otomatis hanya memuat transaksi yang belum diambil serta pilihan filter Sudah Diambil/Belum Diambil tidak ditampilkan.
 
 ### Flow transaksi
 
@@ -376,10 +388,10 @@ Jadi ada keselarasan umum antara frontend dan backend, meski beberapa status sep
 
 ## 7.7 QR Code & Scan QR
 
-Fitur sudah disiapkan untuk:
+Fitur sudah diterapkan untuk:
 
 - generate QR invoice
-- scan QR untuk membuka transaksi
+- scan QR untuk membuka halaman Pengambilan/Pelunasan
 
 ### File utama
 
@@ -850,12 +862,23 @@ Fungsi utama:
 
 - kasir cepat melihat pekerjaan yang harus ditangani hari itu
 - kasir dapat langsung membuat transaksi baru dari tombol `Transaksi Baru`
+- kartu statistik dapat ditekan dan membuka halaman Transaksi dengan filter yang sesuai
+
+Pemetaan kartu statistik:
+
+- `Transaksi Hari Ini` -> Hari Ini
+- `Laundry Diproses` -> Diproses
+- `Laundry Selesai` -> Selesai
+- `Belum Diambil` -> Belum Diambil
 
 Button yang penting:
 
 - `Transaksi Baru` -> membuka halaman pembuatan transaksi baru
+- `Ambil/Pelunasan` -> menampilkan pilihan Scan QR atau Cari Transaksi
 - tombol logout -> keluar aplikasi
 - drawer menu -> sama seperti owner, tetapi akses menu tertentu dibatasi role
+
+Navigasi utama memakai bottom navigation. Isi halaman bergeser mengikuti arah tab tujuan, sedangkan bottom navigation tetap diam. Tombol back perangkat dari tab selain Beranda kembali ke Beranda; dari Beranda aplikasi menampilkan dialog konfirmasi keluar.
 
 #### 17.3.3 Dashboard Super Owner
 
@@ -995,8 +1018,9 @@ Halaman ini menampilkan semua transaksi yang sudah dibuat.
 
 Fitur yang ada:
 
-- filter chip status: Semua, Diterima, Diproses, Selesai, Sudah Diambil, Lunas, Belum Lunas
-- tombol pencarian di AppBar
+- search bar untuk invoice, pelanggan, nomor HP, atau layanan
+- tombol pill `Filter` di bawah search bar sisi kanan
+- panel filter berisi dropdown status dan periode pembuatan transaksi dari tanggal--sampai tanggal
 - tombol floating `Transaksi Baru` untuk menambah transaksi baru
 - daftar card transaksi
 
@@ -1029,11 +1053,10 @@ Yang ada di halaman ini:
 - status pembayaran
 - total biaya
 - tombol `Hubungi via WhatsApp`
-- tombol `Tandai Sudah Diambil` atau `Tandai Lunas & Sudah Diambil`
-- dropdown untuk mengubah status laundry
-- dropdown untuk mengubah status pembayaran
 - tombol `Cetak Bon`
 - menu `Hapus transaksi` jika role cocok
+
+Status laundry dan pembayaran pada halaman ini bersifat informasi otomatis/read-only. Kasir tidak dapat mengubahnya dari halaman detail transaksi. Serah-terima dan pelunasan hanya dilakukan dari halaman Pengambilan/Pelunasan.
 
 Fungsi tombol penting:
 
@@ -1041,26 +1064,34 @@ Fungsi tombol penting:
 - membuka WhatsApp ke nomor pelanggan
 - text otomatis memuat info transaksi
 
-#### Tandai Sudah Diambil
-- menandai barang sudah diterima pelanggan
-- jika pembayaran sudah lunas, status tetap lunas
-- jika belum lunas, status bisa tetap belum lunas sesuai kondisi yang diterapkan
-
-#### Status laundry dropdown
-- user bisa mengubah langkah laundry seperti diterima, diproses, selesai, sudah diambil
-- aplikasi memperbarui data ke backend
-
-#### Status pembayaran dropdown
-- user bisa mengubah status pembayaran dari belum bayar ke DP ke lunas
-- ketika status lunas dipilih, nominal terbayar otomatis disamakan dengan total
-
 #### Cetak Bon
 - otomatis mengirim data transaksi ke printer Bluetooth yang sudah diatur di pengaturan
 - mencetak struk laundry sesuai format thermal
 
 ---
 
-### 17.10 Halaman Scan QR
+### 17.10 Halaman Pengambilan/Pelunasan
+
+Halaman ini khusus untuk menyelesaikan serah-terima laundry dan pembayaran. Halaman dibuka dari menu `Pengambilan`, hasil scan QR invoice, atau card transaksi pada daftar Pengambilan.
+
+Halaman berisi:
+
+- bagian `Bukti pengambilan` dengan tombol kamera dan pratinjau foto
+- kode invoice dalam teks, tanpa QR code
+- nama serta nomor telepon pelanggan
+- detail tagihan: total, sudah dibayar, dan sisa tagihan
+- tombol bersebelahan `Ambil Saja` dan `Lunasi`
+
+Bukti foto wajib diambil terlebih dahulu. Foto dikompresi lalu disimpan secara lokal pada perangkat memakai `shared_preferences`; bukti ini belum diunggah ke backend Laravel.
+
+Perilaku tombol:
+
+- `Ambil Saja`: mengubah status laundry menjadi `collected`, tanpa mengubah kondisi pembayaran.
+- `Lunasi`: mengubah status laundry menjadi `collected`, pembayaran menjadi `paid`, dan nominal terbayar disamakan dengan total transaksi.
+
+Sebelum penyimpanan, aplikasi menampilkan dialog konfirmasi. Setelah berhasil, halaman kembali ke daftar Pengambilan sehingga transaksi tersebut tidak lagi tampil pada daftar transaksi belum diambil.
+
+### 17.11 Halaman Scan QR
 
 Halaman ini digunakan untuk scan QR code dari bon laundry.
 
@@ -1069,7 +1100,7 @@ Fungsi:
 - membuka kamera
 - mendeteksi QR code
 - membandingkan hasil scan dengan nomor invoice transaksi yang ada di database
-- jika cocok, aplikasi langsung membuka detail transaksi tersebut
+- jika cocok, aplikasi langsung membuka halaman Pengambilan/Pelunasan transaksi tersebut
 - jika tidak ada, aplikasi menampilkan pesan `Transaksi dengan kode tersebut tidak ditemukan.`
 
 Flow:
@@ -1079,13 +1110,13 @@ Flow:
 3. user arahkan ke QR kode pada bon laundry
 4. aplikasi membaca invoice
 5. aplikasi mencari transaksi yang punya invoice sama
-6. jika ada, detail transaksi dibuka otomatis
+6. jika ada, halaman Pengambilan/Pelunasan dibuka otomatis
 
 Ini berguna untuk pengecekan transaksi tanpa mencari manual di list transaksi.
 
 ---
 
-### 17.11 Halaman Laporan
+### 17.12 Halaman Laporan
 
 Halaman laporan digunakan untuk melihat ringkasan performa usaha.
 
@@ -1106,7 +1137,7 @@ Fungsi halaman ini adalah memberikan gambaran performa untuk owner dan super own
 
 ---
 
-### 17.12 Halaman Manajemen User
+### 17.13 Halaman Manajemen User
 
 Halaman ini terbatas untuk role owner/super owner.
 
@@ -1128,7 +1159,7 @@ Ini penting untuk kontrol hak akses dan pengelolaan karyawan laundry.
 
 ---
 
-### 17.13 Halaman Pengaturan
+### 17.14 Halaman Pengaturan
 
 Halaman pengaturan digunakan untuk mengatur data bisnis dan printer.
 
@@ -1153,7 +1184,7 @@ Tujuannya:
 
 ---
 
-### 17.14 Hubungan Antara Halaman-Halaman Utama
+### 17.15 Hubungan Antara Halaman-Halaman Utama
 
 Secara umum, alur navigasi utama aplikasi adalah:
 
@@ -1162,7 +1193,8 @@ Secara umum, alur navigasi utama aplikasi adalah:
 3. Dashboard -> pilih menu
 4. Transaksi -> pilih pelanggan + layanan -> simpan transaksi
 5. Daftar transaksi -> klik transaksi -> detail transaksi
-6. Detail transaksi -> ubah status, bayar, cetak bon, scan QR
+6. Detail transaksi -> lihat informasi, hubungi pelanggan, cetak bon
+7. Pengambilan/Pelunasan -> ambil bukti foto, serahkan laundry, dan/atau lunasi
 7. Pelanggan dan Layanan -> data pendukung untuk transaksi
 8. Laporan -> ringkasan performa usaha
 9. Pengaturan -> konfigurasi printer dan profil usaha

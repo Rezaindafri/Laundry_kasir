@@ -10,36 +10,56 @@ class DashboardStatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
+  final bool compact;
 
   const DashboardStatCard({
     required this.label,
     required this.value,
     required this.icon,
     this.color = AppColors.primary,
+    this.onTap,
+    this.compact = false,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 12 : 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.all(compact ? 7 : 9),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: compact ? 18 : 21),
               ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 14),
-            Text(value, style: AppTextStyles.title),
-            const SizedBox(height: 2),
-            Text(label, style: AppTextStyles.bodyMuted),
-          ],
+              const Spacer(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(child: Text(value, style: AppTextStyles.headline)),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: onTap == null
+                        ? Colors.transparent
+                        : AppColors.textSecondary,
+                    size: 22,
+                  ),
+                ],
+              ),
+              SizedBox(height: compact ? 1 : 3),
+              Text(label, style: AppTextStyles.bodyMuted),
+            ],
+          ),
         ),
       ),
     );

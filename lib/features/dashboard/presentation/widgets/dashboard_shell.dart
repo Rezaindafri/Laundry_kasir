@@ -113,37 +113,17 @@ class DashboardShell extends ConsumerWidget {
 
   void _onItemTapped(BuildContext context, String route) {
     if (GoRouter.of(context).state.matchedLocation != route) {
-      context.push(route);
-    }
-  }
-
-  Future<void> _handleSystemBack(BuildContext context) async {
-    final router = GoRouter.of(context);
-    if (router.canPop()) {
-      router.pop();
-      return;
-    }
-
-    final shouldExit = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Keluar aplikasi?'),
-        content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Batal'),
+      if (route == AppRoutes.qrScanner) {
+        context.push(route);
+      } else {
+        final targetIndex = _navItems().indexWhere((item) => item.route == route);
+        context.pushReplacement(
+          route,
+          extra: AppTabTransition(
+            movesLeft: targetIndex > _selectedIndex(context),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Keluar'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldExit == true) {
-      await SystemNavigator.pop();
+        );
+      }
     }
   }
 
@@ -174,15 +154,7 @@ class DashboardShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final navItems = _navItems();
-    final selectedIndex = _selectedIndex(context);
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _handleSystemBack(context);
-      },
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           title: Text(title, style: AppTextStyles.title),
           centerTitle: true,
@@ -197,42 +169,6 @@ class DashboardShell extends ConsumerWidget {
         ),
         drawer: _AppDrawer(user: user),
         body: body,
-        bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          height: 80,
-          decoration: const BoxDecoration(
-            color: AppColors.card,
-            border: Border(top: BorderSide(color: AppColors.divider)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 5),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: List.generate(navItems.length, (index) {
-                final item = navItems[index];
-                final isSelected = selectedIndex == index;
-                final isCenter = index == 2;
-
-                return Expanded(
-                  child: isCenter
-                      ? _QrNavigationItem(
-                          item: item,
-                          isSelected: isSelected,
-                          onTap: () => _onItemTapped(context, item.route),
-                        )
-                      : _NavigationItem(
-                          item: item,
-                          isSelected: isSelected,
-                          onTap: () => _onItemTapped(context, item.route),
-                        ),
-                );
-              }),
-            ),
-          ),
-        ),
-        ),
-      ),
     );
   }
 }
@@ -244,6 +180,145 @@ class _BottomNavItem {
   final String route;
 
   const _BottomNavItem(this.label, this.icon, this.activeIcon, this.route);
+}
+
+/// Kerangka tetap untuk seluruh halaman tab. Hanya konten rute di dalamnya
+/// yang dianimasikan, sehingga bottom navigation tidak ikut bergeser.
+class PersistentTabShell extends ConsumerWidget {
+  final Widget child;
+
+  const PersistentTabShell({required this.child, super.key});
+
+  Future<void> _handleSystemBack(BuildContext context) async {
+    if (GoRouter.of(context).state.matchedLocation != AppRoutes.dashboard) {
+      context.go(AppRoutes.dashboard);
+      return;
+    }
+
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Keluar aplikasi?'),
+        content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Keluar'),
+          ),
+        ],
+      ),
+    );
+    if (shouldExit == true) await SystemNavigator.pop();
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(sessionProvider).valueOrNull;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleSystemBack(context);
+      },
+      child: Scaffold(
+        body: child,
+        bottomNavigationBar:
+            user == null ? null : AppBottomNavigation(user: user),
+      ),
+    );
+  }
+}
+
+/// Bottom navigation bersama untuk setiap halaman tab utama.
+/// QR Scanner sengaja tetap dibuka sebagai halaman sementara tanpa navigation bar.
+class AppBottomNavigation extends StatelessWidget {
+  final UserEntity user;
+
+  const AppBottomNavigation({required this.user, super.key});
+
+  List<_BottomNavItem> get _items {
+    switch (user.role) {
+      case UserRole.kasir:
+        return const [
+            _BottomNavItem('Beranda', Icons.home_outlined, Icons.home_rounded, AppRoutes.dashboard),
+            _BottomNavItem('Transaksi', Icons.receipt_long_outlined, Icons.receipt_long_rounded, AppRoutes.transactions),
+            _BottomNavItem('Scan QR', Icons.qr_code_scanner_outlined, Icons.qr_code_scanner_rounded, AppRoutes.qrScanner),
+            _BottomNavItem('Pelanggan', Icons.people_outline, Icons.people_rounded, AppRoutes.customers),
+            _BottomNavItem('Setting', Icons.settings_outlined, Icons.settings_rounded, AppRoutes.settings),
+          ];
+      case UserRole.owner:
+      case UserRole.superOwner:
+        return const [
+            _BottomNavItem('Beranda', Icons.home_outlined, Icons.home_rounded, AppRoutes.dashboard),
+            _BottomNavItem('Transaksi', Icons.receipt_long_outlined, Icons.receipt_long_rounded, AppRoutes.transactions),
+            _BottomNavItem('Scan QR', Icons.qr_code_scanner_outlined, Icons.qr_code_scanner_rounded, AppRoutes.qrScanner),
+            _BottomNavItem('Laporan', Icons.bar_chart_outlined, Icons.bar_chart_rounded, AppRoutes.reports),
+            _BottomNavItem('Setting', Icons.settings_outlined, Icons.settings_rounded, AppRoutes.settings),
+          ];
+    }
+  }
+
+  int _selectedIndex(BuildContext context) {
+    final location = GoRouter.of(context).state.matchedLocation;
+    final directIndex = _items.indexWhere((item) => item.route == location);
+    return directIndex;
+  }
+
+  void _onTap(BuildContext context, String route) {
+    if (GoRouter.of(context).state.matchedLocation == route) return;
+    if (route == AppRoutes.qrScanner) {
+      context.push(route);
+    } else {
+      final targetIndex = _items.indexWhere((item) => item.route == route);
+      context.pushReplacement(
+        route,
+        extra: AppTabTransition(
+          movesLeft: targetIndex > _selectedIndex(context),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedIndex = _selectedIndex(context);
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: 80,
+        decoration: const BoxDecoration(
+          color: AppColors.card,
+          border: Border(top: BorderSide(color: AppColors.divider)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: List.generate(_items.length, (index) {
+              final item = _items[index];
+              final isSelected = index == selectedIndex;
+              return Expanded(
+                child: index == 2
+                    ? _QrNavigationItem(
+                        item: item,
+                        isSelected: isSelected,
+                        onTap: () => _onTap(context, item.route),
+                      )
+                    : _NavigationItem(
+                        item: item,
+                        isSelected: isSelected,
+                        onTap: () => _onTap(context, item.route),
+                      ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _NavigationItem extends StatelessWidget {

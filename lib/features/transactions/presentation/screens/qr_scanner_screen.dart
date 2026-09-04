@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../../../core/router/app_router.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../providers/transaction_providers.dart';
 import 'transactions_screen.dart';
@@ -35,15 +37,20 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
     _handled = true;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => TransactionDetailScreen(transaction: transaction!),
+        builder: (_) => CollectionSettlementScreen(transaction: transaction!),
       ),
     );
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Scan Kode Pengambilan')),
-        body: Stack(children: [
+  Widget build(BuildContext context) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) context.go(AppRoutes.dashboard);
+        },
+        child: Scaffold(
+          appBar: AppBar(title: const Text('Scan Kode Pengambilan')),
+          body: Stack(children: [
           MobileScanner(onDetect: _onDetect),
           Center(
               child: Container(
@@ -60,6 +67,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white, fontWeight: FontWeight.w600,),),),
-        ],),
+          ],),
+        ),
       );
 }

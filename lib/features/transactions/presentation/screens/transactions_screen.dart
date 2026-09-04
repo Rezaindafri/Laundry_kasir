@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
@@ -17,14 +22,15 @@ import '../../../printing/domain/entities/printer_device.dart';
 import '../../../settings/presentation/providers/settings_providers.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../providers/transaction_providers.dart';
-import 'transaction_search_delegate.dart';
 import '../../../../core/utils/whatsapp_launcher.dart';
 
 enum TransactionListFilter {
   all,
+  today,
   received,
   washing,
   completed,
+  notCollected,
   collected,
   paid,
   unpaid,
@@ -33,9 +39,11 @@ enum TransactionListFilter {
 extension TransactionListFilterLabel on TransactionListFilter {
   String get label => switch (this) {
         TransactionListFilter.all => 'Semua',
+        TransactionListFilter.today => 'Hari Ini',
         TransactionListFilter.received => 'Diterima',
         TransactionListFilter.washing => 'Diproses',
         TransactionListFilter.completed => 'Selesai',
+        TransactionListFilter.notCollected => 'Belum Diambil',
         TransactionListFilter.collected => 'Sudah Diambil',
         TransactionListFilter.paid => 'Lunas',
         TransactionListFilter.unpaid => 'Belum Lunas',
@@ -46,6 +54,10 @@ extension TransactionListFilterLabel on TransactionListFilter {
 
     return switch (this) {
       TransactionListFilter.all => true,
+      TransactionListFilter.today =>
+        transaction.createdAt.year == DateTime.now().year &&
+            transaction.createdAt.month == DateTime.now().month &&
+            transaction.createdAt.day == DateTime.now().day,
       TransactionListFilter.received =>
         resolvedStatus == LaundryStatus.received,
       TransactionListFilter.washing =>
@@ -54,6 +66,8 @@ extension TransactionListFilterLabel on TransactionListFilter {
             resolvedStatus == LaundryStatus.ironing,
       TransactionListFilter.completed =>
         resolvedStatus == LaundryStatus.completed,
+      TransactionListFilter.notCollected =>
+        resolvedStatus != LaundryStatus.collected,
       TransactionListFilter.collected =>
         resolvedStatus == LaundryStatus.collected,
       TransactionListFilter.paid =>
@@ -62,10 +76,23 @@ extension TransactionListFilterLabel on TransactionListFilter {
         transaction.paymentStatus != PaymentStatus.paid,
     };
   }
+
+  static TransactionListFilter fromQuery(String? value) =>
+      TransactionListFilter.values.firstWhere(
+        (filter) => filter.name == value,
+        orElse: () => TransactionListFilter.all,
+      );
 }
 
 class TransactionsScreen extends ConsumerStatefulWidget {
-  const TransactionsScreen({super.key});
+  final TransactionListFilter initialFilter;
+  final bool isCollectionMode;
+
+  const TransactionsScreen({
+    this.initialFilter = TransactionListFilter.all,
+    this.isCollectionMode = false,
+    super.key,
+  });
   static final _currency =
       NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0);
 
@@ -74,61 +101,142 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 }
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
-  TransactionListFilter _filter = TransactionListFilter.all;
+  late TransactionListFilter _filter;
+  DateTimeRange? _dateRange;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _filter = widget.initialFilter;
+  }
+
+  bool _matchesDateRange(TransactionEntity transaction) {
+    final range = _dateRange;
+    if (range == null) return true;
+    final date = DateUtils.dateOnly(transaction.createdAt);
+    final start = DateUtils.dateOnly(range.start);
+    final end = DateUtils.dateOnly(range.end);
+    return !date.isBefore(start) && !date.isAfter(end);
+  }
+
+  bool _matchesSearch(TransactionEntity transaction) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return true;
+    return transaction.invoice.toLowerCase().contains(query) ||
+        transaction.customerName.toLowerCase().contains(query) ||
+        transaction.customerPhone.toLowerCase().contains(query) ||
+        transaction.serviceName.toLowerCase().contains(query);
+  }
+
+  Future<void> _openFilterSheet(
+    List<TransactionListFilter> availableFilters,
+  ) async {
+    final selection = await showModalBottomSheet<_TransactionFilterSelection>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _TransactionFilterSheet(
+        availableFilters: availableFilters,
+        initialFilter: _filter,
+        initialDateRange: _dateRange,
+      ),
+    );
+    if (selection != null && mounted) {
+      setState(() {
+        _filter = selection.filter;
+        _dateRange = selection.dateRange;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final transactions = ref.watch(transactionsProvider);
+    final availableFilters = TransactionListFilter.values
+        .where(
+          (filter) =>
+              !widget.isCollectionMode ||
+              (filter != TransactionListFilter.collected &&
+                  filter != TransactionListFilter.notCollected),
+        )
+        .toList();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Transaksi'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Cari transaksi',
-            onPressed: transactions.maybeWhen(
-              data: (items) => () {
-                showSearch(
-                  context: context,
-                  delegate: TransactionSearchDelegate(items),
-                );
-              },
-              orElse: () => null,
+        title: Text(widget.isCollectionMode ? 'Pengambilan' : 'Transaksi'),
+        automaticallyImplyLeading: widget.isCollectionMode,
+      ),
+      floatingActionButton: widget.isCollectionMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NewTransactionScreen()),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Transaksi Baru'),
             ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const NewTransactionScreen()),
-        ),
-        icon: const Icon(Icons.add),
-        label: const Text('Transaksi Baru'),
-      ),
       body: transactions.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
             Center(child: Text('Transaksi gagal dimuat: $error')),
         data: (items) {
           if (items.isEmpty) return const _EmptyTransactions();
-          final filtered = items.where(_filter.matches).toList();
+          final collectionItems = widget.isCollectionMode
+              ? items.where(TransactionListFilter.notCollected.matches)
+              : items;
+          final filtered = collectionItems
+              .where(_filter.matches)
+              .where(_matchesDateRange)
+              .where(_matchesSearch)
+              .toList();
           return Column(
             children: [
-              SizedBox(
-                height: 56,
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  scrollDirection: Axis.horizontal,
-                  itemBuilder: (_, index) {
-                    final item = TransactionListFilter.values[index];
-                    return FilterChip(
-                      selected: _filter == item,
-                      label: Text(item.label),
-                      onSelected: (_) => setState(() => _filter = item),
-                    );
-                  },
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemCount: TransactionListFilter.values.length,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _searchController,
+                      onChanged: (value) => setState(() => _searchQuery = value),
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Cari invoice, pelanggan, atau layanan',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Hapus pencarian',
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _openFilterSheet(availableFilters),
+                        icon: const Icon(Icons.filter_list_rounded),
+                        label: const Text('Filter'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textSecondary,
+                          minimumSize: const Size(0, 42),
+                          side: const BorderSide(color: AppColors.textSecondary),
+                          shape: const StadiumBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -153,7 +261,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 10),
                           itemBuilder: (_, index) =>
-                              _TransactionCard(transaction: filtered[index]),
+                              _TransactionCard(
+                                transaction: filtered[index],
+                                isCollectionMode: widget.isCollectionMode,
+                              ),
                         ),
                       ),
               ),
@@ -163,6 +274,133 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       ),
     );
   }
+}
+
+class _TransactionFilterSelection {
+  final TransactionListFilter filter;
+  final DateTimeRange? dateRange;
+
+  const _TransactionFilterSelection({
+    required this.filter,
+    required this.dateRange,
+  });
+}
+
+class _TransactionFilterSheet extends StatefulWidget {
+  final List<TransactionListFilter> availableFilters;
+  final TransactionListFilter initialFilter;
+  final DateTimeRange? initialDateRange;
+
+  const _TransactionFilterSheet({
+    required this.availableFilters,
+    required this.initialFilter,
+    required this.initialDateRange,
+  });
+
+  @override
+  State<_TransactionFilterSheet> createState() =>
+      _TransactionFilterSheetState();
+}
+
+class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
+  late TransactionListFilter _filter;
+  DateTimeRange? _dateRange;
+
+  @override
+  void initState() {
+    super.initState();
+    _filter = widget.initialFilter;
+    _dateRange = widget.initialDateRange;
+  }
+
+  Future<void> _selectDateRange() async {
+    final selected = await showDateRangePicker(
+      context: context,
+      initialDateRange: _dateRange,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      helpText: 'Pilih rentang tanggal transaksi',
+      saveText: 'Terapkan',
+    );
+    if (selected != null && mounted) setState(() => _dateRange = selected);
+  }
+
+  String get _dateRangeLabel {
+    final range = _dateRange;
+    if (range == null) return 'Semua tanggal';
+    final formatter = DateFormat('d MMM yyyy', 'id_ID');
+    return '${formatter.format(range.start)} - ${formatter.format(range.end)}';
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            0,
+            20,
+            20 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Filter transaksi', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 18),
+              DropdownButtonFormField<TransactionListFilter>(
+                initialValue: _filter,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Status transaksi'),
+                items: widget.availableFilters
+                    .map(
+                      (filter) => DropdownMenuItem(
+                        value: filter,
+                        child: Text(filter.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (filter) {
+                  if (filter != null) setState(() => _filter = filter);
+                },
+              ),
+              const SizedBox(height: 14),
+              Text('Periode pembuatan transaksi',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _selectDateRange,
+                icon: const Icon(Icons.date_range_outlined),
+                label: Text(_dateRangeLabel, overflow: TextOverflow.ellipsis),
+              ),
+              if (_dateRange != null)
+                TextButton.icon(
+                  onPressed: () => setState(() => _dateRange = null),
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('Hapus periode tanggal'),
+                ),
+              const SizedBox(height: 10),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _TransactionFilterSelection(
+                    filter: _filter,
+                    dateRange: _dateRange,
+                  ),
+                ),
+                child: const Text('Terapkan Filter'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(
+                  const _TransactionFilterSelection(
+                    filter: TransactionListFilter.all,
+                    dateRange: null,
+                  ),
+                ),
+                child: const Text('Reset Filter'),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class _EmptyTransactions extends StatelessWidget {
@@ -194,14 +432,21 @@ class _EmptyTransactions extends StatelessWidget {
 
 class _TransactionCard extends ConsumerWidget {
   final TransactionEntity transaction;
-  const _TransactionCard({required this.transaction});
+  final bool isCollectionMode;
+
+  const _TransactionCard({
+    required this.transaction,
+    this.isCollectionMode = false,
+  });
   @override
   Widget build(BuildContext context, WidgetRef ref) => Card(
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => TransactionDetailScreen(transaction: transaction),
+              builder: (_) => isCollectionMode
+                  ? CollectionSettlementScreen(transaction: transaction)
+                  : TransactionDetailScreen(transaction: transaction),
             ),
           ),
           child: Padding(
@@ -777,44 +1022,11 @@ class _TransactionDetailScreenState
     _transaction = widget.transaction;
   }
 
-  Future<void> _saveUpdate(
-    TransactionEntity updatedTransaction,
-    String successMessage,
-  ) async {
-    final result = await ref
-        .read(transactionsProvider.notifier)
-        .updateTransaction(updatedTransaction);
-    if (!mounted) return;
-    result.when(
-      success: (item) {
-        setState(() => _transaction = item);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(successMessage)),
-        );
-      },
-      error: (failure) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(failure.message)),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final currentRole = ref.watch(sessionProvider).valueOrNull?.role;
     final canDelete =
         currentRole == UserRole.owner || currentRole == UserRole.superOwner;
-    final canHandleTransaction = currentRole != null;
-    final currentLaundryStatus =
-        _transaction.resolveLaundryStatusAt(DateTime.now());
-    final effectiveLaundryStatus =
-        _transaction.laundryStatus == LaundryStatus.collected
-            ? LaundryStatus.collected
-            : currentLaundryStatus;
-    final isCollected = effectiveLaundryStatus == LaundryStatus.collected;
-    final isPaid = _transaction.paymentStatus == PaymentStatus.paid;
-
     return Scaffold(
       floatingActionButton: _PrintReceiptButton(transaction: _transaction),
       appBar: AppBar(
@@ -1003,117 +1215,240 @@ class _TransactionDetailScreenState
             icon: const Icon(Icons.chat_outlined),
             label: const Text('Hubungi via WhatsApp'),
           ),
-          if (canHandleTransaction) ...[
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: isCollected && isPaid
-                  ? null
-                  : () => _saveUpdate(
-                        _transaction.copyWith(
-                          laundryStatus: LaundryStatus.collected,
-                          paymentStatus:
-                              _transaction.paymentStatus == PaymentStatus.paid
-                                  ? PaymentStatus.paid
-                                  : PaymentStatus.unpaid,
-                          paidAmount:
-                              _transaction.paymentStatus == PaymentStatus.paid
-                                  ? _transaction.total
-                                  : _transaction.paidAmount,
-                        ),
-                        _transaction.paymentStatus == PaymentStatus.paid
-                            ? 'Transaksi ditandai sudah diambil pelanggan.'
-                            : 'Transaksi ditandai sudah diambil pelanggan. Status pembayaran tetap sesuai kondisi sebelumnya.',
-                      ),
-              icon: const Icon(Icons.assignment_turned_in_outlined),
-              label: Text(
-                isCollected && isPaid
-                    ? 'Sudah Diambil'
-                    : _transaction.paymentStatus == PaymentStatus.paid
-                        ? 'Tandai Sudah Diambil'
-                        : 'Tandai Lunas & Sudah Diambil',
+        ],
+      ),
+    );
+  }
+}
+
+class CollectionSettlementScreen extends ConsumerStatefulWidget {
+  final TransactionEntity transaction;
+
+  const CollectionSettlementScreen({required this.transaction, super.key});
+
+  @override
+  ConsumerState<CollectionSettlementScreen> createState() =>
+      _CollectionSettlementScreenState();
+}
+
+class _CollectionSettlementScreenState
+    extends ConsumerState<CollectionSettlementScreen> {
+  final _imagePicker = ImagePicker();
+  Uint8List? _proofImage;
+  bool _saving = false;
+
+  String get _evidenceKey => 'collection_proof_${widget.transaction.id}';
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreProofImage();
+  }
+
+  Future<void> _restoreProofImage() async {
+    final preferences = await SharedPreferences.getInstance();
+    final savedImage = preferences.getString(_evidenceKey);
+    if (savedImage == null || !mounted) return;
+    setState(() => _proofImage = base64Decode(savedImage));
+  }
+
+  Future<void> _takeProofImage() async {
+    final image = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+      maxWidth: 1280,
+    );
+    if (image == null || !mounted) return;
+
+    final proof = await image.readAsBytes();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_evidenceKey, base64Encode(proof));
+    if (!mounted) return;
+    setState(() => _proofImage = proof);
+  }
+
+  Future<void> _completeCollection({required bool settlePayment}) async {
+    if (_proofImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ambil foto bukti pengambilan terlebih dahulu.')),
+      );
+      return;
+    }
+
+    final actionLabel = settlePayment ? 'lunasi dan serahkan' : 'serahkan saja';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Konfirmasi pengambilan'),
+        content: Text(
+          'Yakin ingin $actionLabel transaksi ${widget.transaction.invoice}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Konfirmasi'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _saving = true);
+    final paymentStatus = settlePayment
+        ? PaymentStatus.paid
+        : widget.transaction.paymentStatus;
+    final paidAmount = settlePayment
+        ? widget.transaction.total
+        : widget.transaction.paidAmount;
+    final result = await ref.read(transactionsProvider.notifier).updateTransaction(
+          widget.transaction.copyWith(
+            laundryStatus: LaundryStatus.collected,
+            paymentStatus: paymentStatus,
+            paidAmount: paidAmount,
+          ),
+        );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    result.when(
+      success: (_) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              settlePayment
+                  ? 'Transaksi telah lunas dan berhasil diambil.'
+                  : 'Transaksi berhasil ditandai sudah diambil.',
+            ),
+          ),
+        );
+      },
+      error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failure.message)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final transaction = widget.transaction;
+    final remaining =
+        transaction.remainingPayment.clamp(0, transaction.total).toInt();
+    final isCollected = transaction.laundryStatus == LaundryStatus.collected;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pengambilan / Pelunasan')),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _saving || isCollected
+                    ? null
+                    : () => _completeCollection(settlePayment: false),
+                child: const Text('Ambil Saja'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: _saving || isCollected
+                    ? null
+                    : () => _completeCollection(settlePayment: true),
+                child: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Lunasi'),
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          Text(
-            'Status pengerjaan',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Bukti pengambilan', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          DropdownButtonFormField<LaundryStatus>(
-            initialValue: _transaction.laundryStatus,
-            decoration: InputDecoration(
-              labelText: 'Status laundry',
-              helperText: canHandleTransaction
-                  ? 'Gunakan juga untuk status barang sudah diambil pelanggan.'
-                  : 'Anda belum memiliki akses mengubah status.',
-            ),
-            items: LaundryStatus.values
-                .map(
-                  (value) => DropdownMenuItem(
-                    value: value,
-                    child: Text(value.label),
-                  ),
-                )
-                .toList(),
-            onChanged: canHandleTransaction
-                ? (value) {
-                    if (value == null) return;
-                    final updatedTransaction = _transaction.copyWith(
-                      laundryStatus: value,
-                      paymentStatus: value == LaundryStatus.collected
-                          ? PaymentStatus.paid
-                          : _transaction.paymentStatus,
-                      paidAmount: value == LaundryStatus.collected
-                          ? _transaction.total
-                          : _transaction.paidAmount,
-                    );
-                    _saveUpdate(
-                      updatedTransaction,
-                      value == LaundryStatus.collected
-                          ? 'Status diubah menjadi sudah diambil dan otomatis lunas.'
-                          : 'Status laundry berhasil diperbarui.',
-                    );
-                  }
-                : null,
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<PaymentStatus>(
-            initialValue: _transaction.paymentStatus,
-            decoration: InputDecoration(
-              labelText: 'Status pembayaran',
-              helperText: canHandleTransaction
-                  ? 'Saat lunas, nominal terbayar akan disamakan dengan total transaksi.'
-                  : 'Anda belum memiliki akses mengubah status pembayaran.',
-            ),
-            items: PaymentStatus.values
-                .map(
-                  (value) => DropdownMenuItem(
-                    value: value,
-                    child: Text(value.label),
-                  ),
-                )
-                .toList(),
-            onChanged: canHandleTransaction
-                ? (value) {
-                    if (value == null) return;
-                    final updatedPaidAmount = value == PaymentStatus.paid
-                        ? _transaction.total
-                        : value == PaymentStatus.unpaid
-                            ? 0
-                            : _transaction.paidAmount > 0
-                                ? _transaction.paidAmount
-                                : (_transaction.total / 2).round();
-                    _saveUpdate(
-                      _transaction.copyWith(
-                        paymentStatus: value,
-                        paidAmount: updatedPaidAmount,
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: _proofImage == null
+                ? Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.add_a_photo_outlined, size: 42),
+                        const SizedBox(height: 10),
+                        const Text('Foto penerima atau bukti pengambilan.'),
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          onPressed: _takeProofImage,
+                          icon: const Icon(Icons.camera_alt_outlined),
+                          label: const Text('Ambil Foto'),
+                        ),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 4 / 3,
+                        child: Image.memory(_proofImage!, fit: BoxFit.cover),
                       ),
-                      'Status pembayaran berhasil diperbarui.',
-                    );
-                  }
-                : null,
+                      TextButton.icon(
+                        onPressed: _takeProofImage,
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: const Text('Ambil Ulang Foto'),
+                      ),
+                    ],
+                  ),
           ),
+          const SizedBox(height: 20),
+          Text('Kode transaksi', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(transaction.invoice, style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 4),
+                  Text(transaction.customerName),
+                  if (transaction.customerPhone.isNotEmpty)
+                    Text(transaction.customerPhone, style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Detail tagihan', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _PriceRow(label: '${transaction.serviceName} (${transaction.quantity} ${transaction.quantityUnit})', value: transaction.total),
+                  const Divider(height: 20),
+                  _PriceRow(label: 'Total tagihan', value: transaction.total),
+                  _PriceRow(label: 'Sudah dibayar', value: transaction.paidAmount),
+                  const Divider(height: 20),
+                  _PriceRow(label: 'Sisa tagihan', value: remaining, emphasis: true),
+                ],
+              ),
+            ),
+          ),
+          if (isCollected) ...[
+            const SizedBox(height: 16),
+            const _StatusChip(label: 'Sudah Diambil', color: AppColors.statusSelesai),
+          ],
         ],
       ),
     );

@@ -18,11 +18,12 @@ class CustomersScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final customers = ref.watch(customersProvider);
-    final currentRole = ref.watch(sessionProvider).valueOrNull?.role;
+    final user = ref.watch(sessionProvider).valueOrNull;
+    final currentRole = user?.role;
     final isKasir = currentRole == UserRole.kasir;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Pelanggan'), actions: [IconButton(icon: const Icon(Icons.search), tooltip: 'Cari pelanggan', onPressed: () { final list = customers.valueOrNull == null ? const <CustomerEntity>[] : customers.valueOrNull!; showSearch(context: context, delegate: CustomerSearchDelegate(list)); })]),
+      appBar: AppBar(automaticallyImplyLeading: false, title: const Text('Pelanggan'), actions: [IconButton(icon: const Icon(Icons.search), tooltip: 'Cari pelanggan', onPressed: () { final list = customers.valueOrNull == null ? const <CustomerEntity>[] : customers.valueOrNull!; showSearch(context: context, delegate: CustomerSearchDelegate(list)); })]),
       floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _showForm(context, ref),
           icon: const Icon(Icons.person_add_alt_1_outlined),

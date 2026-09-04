@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,6 +9,7 @@ import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/dashboard/presentation/screens/kasir_dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/owner_dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/super_owner_dashboard_screen.dart';
+import '../../features/dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../features/master_data/presentation/screens/customers_screen.dart';
 import '../../features/master_data/presentation/screens/laundry_services_screen.dart';
 import '../../features/reports/presentation/screens/reports_screen.dart';
@@ -26,10 +28,40 @@ abstract class AppRoutes {
   static const customers = '/customers';
   static const services = '/services';
   static const transactions = '/transactions';
+  static const collections = '/collections';
   static const qrScanner = '/scan-qr';
   static const reports = '/reports';
   static const users = '/users';
   static const settings = '/settings';
+}
+
+/// Informasi arah perpindahan antar-tab yang dikirim oleh bottom navigation.
+class AppTabTransition {
+  final bool movesLeft;
+
+  const AppTabTransition({required this.movesLeft});
+}
+
+Page<void> _tabPage(GoRouterState state, Widget child) {
+  final transition = state.extra as AppTabTransition?;
+  if (transition == null) {
+    return NoTransitionPage<void>(key: state.pageKey, child: child);
+  }
+
+  final begin = transition.movesLeft ? const Offset(0.28, 0) : const Offset(-0.28, 0);
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 360),
+    reverseTransitionDuration: const Duration(milliseconds: 360),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        SlideTransition(
+          position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeInOutCubic),
+          ),
+          child: child,
+        ),
+  );
 }
 
 /// Menjembatani AsyncNotifier (Riverpod) dengan GoRouter's
@@ -80,39 +112,77 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.login,
         builder: (context, state) => const LoginScreen(),
       ),
-      GoRoute(
-        path: AppRoutes.dashboard,
-        builder: (context, state) {
-          final user = ref.read(sessionProvider).valueOrNull;
-          if (user == null) return const LoginScreen();
+      ShellRoute(
+        builder: (context, state, child) => PersistentTabShell(child: child),
+        routes: [
+          GoRoute(
+            path: AppRoutes.dashboard,
+            pageBuilder: (context, state) {
+              final user = ref.read(sessionProvider).valueOrNull;
+              if (user == null) {
+                return NoTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const LoginScreen(),
+                );
+              }
 
-          return switch (user.role) {
-            UserRole.superOwner => SuperOwnerDashboardScreen(user: user),
-            UserRole.owner => OwnerDashboardScreen(user: user),
-            UserRole.kasir => KasirDashboardScreen(user: user),
-          };
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.customers,
-        builder: (context, state) => const CustomersScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.transactions,
-        builder: (context, state) => const TransactionsScreen(),
+              final child = switch (user.role) {
+                UserRole.superOwner => SuperOwnerDashboardScreen(user: user),
+                UserRole.owner => OwnerDashboardScreen(user: user),
+                UserRole.kasir => KasirDashboardScreen(user: user),
+              };
+              return _tabPage(state, child);
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.customers,
+            pageBuilder: (context, state) => _tabPage(
+              state,
+              const CustomersScreen(),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.transactions,
+            pageBuilder: (context, state) => _tabPage(
+              state,
+              TransactionsScreen(
+                key: ValueKey(state.uri.toString()),
+                initialFilter: TransactionListFilterLabel.fromQuery(
+                  state.uri.queryParameters['filter'],
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.reports,
+            redirect: (context, state) =>
+                ref.read(sessionProvider).valueOrNull?.role.canViewProfitReports ==
+                        true
+                    ? null
+                    : AppRoutes.dashboard,
+            pageBuilder: (context, state) => _tabPage(
+              state,
+              const ReportsScreen(),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.settings,
+            pageBuilder: (context, state) => _tabPage(
+              state,
+              const SettingsScreen(),
+            ),
+          ),
+        ],
       ),
       GoRoute(
         path: AppRoutes.qrScanner,
         builder: (context, state) => const QrScannerScreen(),
       ),
       GoRoute(
-        path: AppRoutes.reports,
-        redirect: (context, state) =>
-            ref.read(sessionProvider).valueOrNull?.role.canViewProfitReports ==
-                    true
-                ? null
-                : AppRoutes.dashboard,
-        builder: (context, state) => const ReportsScreen(),
+        path: AppRoutes.collections,
+        builder: (context, state) => const TransactionsScreen(
+          isCollectionMode: true,
+        ),
       ),
       GoRoute(
         path: AppRoutes.users,
@@ -121,10 +191,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ? null
                 : AppRoutes.dashboard,
         builder: (context, state) => const UserManagementScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.settings,
-        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: AppRoutes.services,
