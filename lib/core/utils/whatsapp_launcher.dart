@@ -14,6 +14,12 @@ abstract class WhatsAppLauncher {
     return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  /// A receipt image is shared using Android's share sheet, but this is still
+  /// the same validation rule used before opening a direct WhatsApp chat.
+  static bool hasValidPhone(String? phone) => _normalize(phone) != null;
+
+  static String? normalizedPhone(String? phone) => _normalize(phone);
+
   static String? _normalize(String? value) {
     if (value == null || value.trim().isEmpty) return null;
     var digits = value.replaceAll(RegExp(r'[^0-9+]'), '');

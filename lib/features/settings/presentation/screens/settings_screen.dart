@@ -42,6 +42,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   late final TextEditingController _address;
   late String _paper;
   String? _printerMac;
+  String? _printerName;
   bool _loadingPrinters = false;
 
   @override
@@ -52,6 +53,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     _address = TextEditingController(text: widget.value.address);
     _paper = widget.value.paperSize;
     _printerMac = widget.value.defaultPrinter;
+    _printerName = widget.value.defaultPrinterName;
   }
 
   @override
@@ -96,7 +98,12 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
           ),
         ),
       );
-      if (selected != null) setState(() => _printerMac = selected.macAddress);
+      if (selected != null) {
+        setState(() {
+          _printerMac = selected.macAddress;
+          _printerName = selected.name;
+        });
+      }
     } on PrinterException catch (error) {
       if (mounted)
         ScaffoldMessenger.of(context)
@@ -114,6 +121,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
           address: _address.text.trim(),
           paperSize: _paper,
           defaultPrinter: _printerMac,
+          defaultPrinterName: _printerName,
         ));
     if (mounted)
       ScaffoldMessenger.of(context)
@@ -124,7 +132,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Profil Laundry',
+          Text('Profil Pengguna',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
           Form(
@@ -134,9 +142,9 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
                 TextFormField(
                     controller: _name,
                     decoration:
-                        const InputDecoration(labelText: 'Nama laundry'),
+                        const InputDecoration(labelText: 'Nama pengguna'),
                     validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Nama laundry wajib diisi'
+                        ? 'Nama pengguna wajib diisi'
                         : null),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -157,18 +165,30 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
                 const SizedBox(height: 8),
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.bluetooth_searching),
-                    title: const Text('Printer Bluetooth'),
+                    leading: const Icon(Icons.bluetooth_connected),
+                    title: Text(_printerMac == null || _printerMac!.isEmpty
+                        ? 'Belum ada printer aplikasi'
+                        : (_printerName?.isNotEmpty ?? false)
+                            ? _printerName!
+                            : 'Printer Bluetooth'),
                     subtitle: Text(_printerMac == null || _printerMac!.isEmpty
-                        ? 'Belum dipilih'
-                        : _printerMac!),
-                    trailing: _loadingPrinters
+                        ? 'Pilih printer untuk digunakan aplikasi ini'
+                        : 'Dipilih untuk aplikasi ini • $_printerMac'),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _loadingPrinters ? null : _choosePrinter,
+                    icon: _loadingPrinters
                         ? const SizedBox(
-                            width: 20,
-                            height: 20,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.chevron_right),
-                    onTap: _loadingPrinters ? null : _choosePrinter,
+                        : const Icon(Icons.bluetooth_searching),
+                    label: Text(_printerMac == null || _printerMac!.isEmpty
+                        ? 'Pilih printer'
+                        : 'Ganti printer'),
                   ),
                 ),
                 const SizedBox(height: 12),

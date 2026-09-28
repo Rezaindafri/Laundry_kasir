@@ -164,7 +164,11 @@ class TransactionModel {
     if (forRequest) {
       return {
         'customer_id': customerId,
-        'payment_status': paymentStatus == 'downPayment' ? 'unpaid' : paymentStatus,
+        'payment_status': paymentStatus,
+        'payment_method': paymentMethod,
+        'paid_amount': paidAmount,
+        'estimated_finish_at': estimatedFinishAt?.toIso8601String(),
+        'notes': notes,
         'services': [
           {
             'service_id': serviceId,
@@ -268,6 +272,8 @@ String _mapLaundryStatus(String value) {
       return 'collected';
     case 'completed':
       return 'completed';
+    case 'late':
+      return 'late';
     default:
       return 'received';
   }

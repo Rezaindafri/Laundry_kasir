@@ -9,6 +9,8 @@ import '../../data/repositories/transaction_repository_impl.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../../domain/repositories/transaction_repository.dart';
 
+import 'dart:typed_data';
+
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   if (AppConstants.useMockApi) {
     return MockTransactionRepository();
@@ -31,6 +33,11 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
       success: (items) => items,
       error: (failure) => throw failure,
     );
+  }
+
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(build);
   }
 
   Future<Result<TransactionEntity>> create(
@@ -60,6 +67,28 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
   ) async {
     final result =
         await ref.read(transactionRepositoryProvider).update(transaction);
+    result.when(
+      success: (item) {
+        final items = <TransactionEntity>[...(state.valueOrNull ?? [])];
+        final index = items.indexWhere((value) => value.id == item.id);
+        if (index >= 0) items[index] = item;
+        state = AsyncData(items);
+      },
+      error: (_) {},
+    );
+    return result;
+  }
+
+  Future<Result<TransactionEntity>> collectTransaction({
+    required TransactionEntity transaction,
+    required bool settlePayment,
+    Uint8List? proofImage,
+  }) async {
+    final result = await ref.read(transactionRepositoryProvider).collect(
+      transaction: transaction,
+      settlePayment: settlePayment,
+      proofImage: proofImage,
+    );
     result.when(
       success: (item) {
         final items = <TransactionEntity>[...(state.valueOrNull ?? [])];

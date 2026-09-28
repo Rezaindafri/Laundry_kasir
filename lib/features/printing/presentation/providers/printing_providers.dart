@@ -8,3 +8,11 @@ final thermalReceiptServiceProvider =
 
 final printerDeviceServiceProvider =
     Provider<PrinterDeviceService>((ref) => PrinterDeviceService());
+
+/// Prevents a second tap from opening a concurrent Bluetooth connection while
+/// the first receipt is still being transmitted.
+final receiptPrintingProvider = StateProvider<bool>((ref) => false);
+
+/// Prevents opening the share sheet repeatedly while the receipt image is
+/// being rendered.
+final receiptSharingProvider = StateProvider<bool>((ref) => false);

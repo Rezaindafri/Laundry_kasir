@@ -6,10 +6,9 @@ import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/config/theme/app_text_styles.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../auth/domain/entities/user_entity.dart';
-import '../../../master_data/presentation/screens/customers_screen.dart';
 import '../../../transactions/domain/entities/transaction_entity.dart';
-import '../../../transactions/presentation/providers/transaction_providers.dart';
 import '../../../transactions/presentation/screens/transactions_screen.dart';
+import '../providers/dashboard_providers.dart';
 import '../widgets/dashboard_shell.dart';
 import '../widgets/dashboard_stat_card.dart';
 
@@ -18,15 +17,15 @@ class KasirDashboardScreen extends ConsumerStatefulWidget {
   const KasirDashboardScreen({required this.user, super.key});
 
   @override
-  ConsumerState<KasirDashboardScreen> createState() => _KasirDashboardScreenState();
+  ConsumerState<KasirDashboardScreen> createState() =>
+      _KasirDashboardScreenState();
 }
 
 class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
-  bool _showReady = false;
+  bool _showReady = true;
 
   Future<void> _refresh() async {
-    ref.invalidate(transactionsProvider);
-    await ref.read(transactionsProvider.future);
+    await ref.read(kasirDashboardProvider.notifier).refresh();
   }
 
   Future<void> _showCollectionOptions() async {
@@ -47,13 +46,15 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                 leading: const Icon(Icons.qr_code_scanner_rounded),
                 title: const Text('Scan QR'),
                 subtitle: const Text('Scan kode pada bon laundry'),
-                onTap: () => Navigator.of(sheetContext).pop(_CollectionAction.scan),
+                onTap: () =>
+                    Navigator.of(sheetContext).pop(_CollectionAction.scan),
               ),
               ListTile(
                 leading: const Icon(Icons.search_rounded),
                 title: const Text('Cari Transaksi'),
                 subtitle: const Text('Pilih dari daftar cucian belum diambil'),
-                onTap: () => Navigator.of(sheetContext).pop(_CollectionAction.search),
+                onTap: () =>
+                    Navigator.of(sheetContext).pop(_CollectionAction.search),
               ),
             ],
           ),
@@ -62,65 +63,159 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
     );
     if (!mounted || action == null) return;
     if (action == _CollectionAction.scan) {
-      context.push(AppRoutes.qrScanner);
+      await context.push(AppRoutes.qrScanner);
     } else {
-      context.push(AppRoutes.collections);
+      await context.push(AppRoutes.collections);
     }
+    if (mounted) await _refresh();
   }
 
-  Future<bool> _markCollected(TransactionEntity transaction) async {
-    final result = await ref.read(transactionsProvider.notifier).updateTransaction(
-          transaction.copyWith(
-            laundryStatus: LaundryStatus.collected,
-            paymentStatus: PaymentStatus.paid,
-            paidAmount: transaction.total,
+  /*Future<void> _showCreateCustomerSheet() async {
+    final formKey = GlobalKey<FormState>();
+    final name = TextEditingController();
+    final phone = TextEditingController();
+    final address = TextEditingController();
+    var gender = CustomerGender.male;
+
+    final customer = await showModalBottomSheet<CustomerEntity>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            24,
+            24,
+            24 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Pelanggan Baru',
+                    style: Theme.of(sheetContext).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Nama pelanggan'),
+                  validator: (value) =>
+                      Validators.required(value, field: 'Nama pelanggan'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: phone,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Nomor HP (opsional)'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? null
+                      : Validators.phone(value),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: address,
+                  decoration: const InputDecoration(labelText: 'Alamat (opsional)'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<CustomerGender>(
+                  initialValue: gender,
+                  decoration: const InputDecoration(
+                      labelText: 'Jenis kelamin (opsional)'),
+                  items: CustomerGender.values
+                      .map((item) => DropdownMenuItem(
+                            value: item,
+                            child: Text(item.label),
+                          ))
+                      .toList(),
+                  onChanged: (value) =>
+                      setSheetState(() => gender = value ?? CustomerGender.male),
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) return;
+                    Navigator.pop(
+                      sheetContext,
+                      CustomerEntity(
+                        id: '',
+                        name: name.text.trim(),
+                        phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
+                        address: address.text.trim().isEmpty
+                            ? null
+                            : address.text.trim(),
+                        gender: gender,
+                      ),
+                    );
+                  },
+                  child: const Text('Simpan'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    name.dispose();
+    phone.dispose();
+    address.dispose();
+    if (customer == null || !mounted) return;
+
+    final saved = await ref.read(customersProvider.notifier).save(customer);
+    if (!mounted) return;
+    saved.when(
+      success: (item) async {
+        final createTransaction = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Pelanggan berhasil dibuat'),
+            content: Text('Buat transaksi baru untuk ${item.name}?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Kembali'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Membuat Transaksi'),
+              ),
+            ],
           ),
         );
-    if (!mounted) return false;
-    return result.when(
-      success: (_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cucian ditandai sudah diambil.')),
-        );
-        return true;
+        if (createTransaction == true && mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => NewTransactionScreen(initialCustomer: item),
+            ),
+          );
+          if (mounted) await _refresh();
+        }
       },
-      error: (failure) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure.message)));
-        return false;
-      },
+      error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failure.message)),
+      ),
     );
-  }
+  }*/
 
   @override
   Widget build(BuildContext context) {
-    final data = ref.watch(transactionsProvider);
-    final now = DateTime.now();
+    final data = ref.watch(kasirDashboardProvider);
     return DashboardShell(
       user: widget.user,
       title: 'Dashboard Kasir',
       body: data.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => Center(
-          child: OutlinedButton(onPressed: _refresh, child: const Text('Coba lagi')),
+          child: OutlinedButton(
+              onPressed: _refresh, child: const Text('Coba lagi')),
         ),
-        data: (items) {
-          final ready = _ready(items, now);
-          final due = _due(items, now);
+        data: (dashboard) {
+          final summary = dashboard.summary;
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
-                Text(
-                  'Halo, ${widget.user.name.split(' ').first} ${String.fromCharCode(0x1F44B)}',
-                  style: AppTextStyles.displayLarge.copyWith(fontSize: 28),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Berikut ringkasan aktivitas laundry hari ini.',
-                  style: AppTextStyles.bodyMuted,
-                ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 4),
                 GridView.count(
                   crossAxisCount: 2,
                   shrinkWrap: true,
@@ -131,7 +226,7 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                   children: [
                     DashboardStatCard(
                       label: 'Transaksi Hari Ini',
-                      value: items.where((item) => _sameDay(item.createdAt, now)).length.toString(),
+                      value: summary.transactionsToday.toString(),
                       icon: Icons.receipt_long_outlined,
                       compact: true,
                       onTap: () => _openFilteredTransactions(
@@ -140,7 +235,7 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                     ),
                     DashboardStatCard(
                       label: 'Laundry Diproses',
-                      value: _inProgress(items, now).toString(),
+                      value: summary.inProgress.toString(),
                       icon: Icons.local_laundry_service_outlined,
                       color: AppColors.statusDicuci,
                       compact: true,
@@ -149,18 +244,18 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                       ),
                     ),
                     DashboardStatCard(
-                      label: 'Laundry Selesai',
-                      value: ready.length.toString(),
-                      icon: Icons.check_circle_outline_rounded,
-                      color: AppColors.statusSelesai,
+                      label: 'Terlambat',
+                      value: summary.late.toString(),
+                      icon: Icons.warning_amber_rounded,
+                      color: AppColors.warning,
                       compact: true,
                       onTap: () => _openFilteredTransactions(
-                        TransactionListFilter.completed,
+                        TransactionListFilter.late,
                       ),
                     ),
                     DashboardStatCard(
                       label: 'Belum Diambil',
-                      value: ready.length.toString(),
+                      value: summary.readyToPickup.toString(),
                       icon: Icons.inventory_2_outlined,
                       color: AppColors.warning,
                       compact: true,
@@ -173,13 +268,16 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Icon(Icons.info_outline_rounded, size: 20, color: AppColors.textSecondary),
+                    Icon(Icons.info_outline_rounded,
+                        size: 20, color: AppColors.textSecondary),
                     SizedBox(width: 8),
-                    Text('Ketuk kartu untuk melihat detail', style: AppTextStyles.bodyMuted),
+                    Text('Ketuk kartu untuk melihat detail',
+                        style: AppTextStyles.bodyMuted),
                   ],
                 ),
                 const SizedBox(height: 22),
-                const _Header(title: 'Aksi Cepat', trailing: 'Pilih aksi utama'),
+                const _Header(
+                    title: 'Aksi Cepat', trailing: 'Pilih aksi utama'),
                 const SizedBox(height: 14),
                 SizedBox(
                   height: 172,
@@ -191,9 +289,14 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                           title: 'Transaksi\nBaru',
                           subtitle: 'Pesanan masuk',
                           primary: true,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const NewTransactionScreen()),
-                          ),
+                          onTap: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const NewTransactionScreen(),
+                              ),
+                            );
+                            if (mounted) await _refresh();
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -211,9 +314,9 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                           icon: Icons.person_add_alt_1_rounded,
                           title: 'Pelanggan\nBaru',
                           subtitle: 'Tambah data',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const CustomersScreen()),
-                          ),
+                          onTap: () {
+                            context.go('${AppRoutes.customers}?create=true');
+                          },
                         ),
                       ),
                     ],
@@ -222,16 +325,19 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                 const SizedBox(height: 34),
                 _ActiveQueue(
                   showReady: _showReady,
-                  due: due,
-                  ready: ready,
+                  due: dashboard.dueSoonItems,
+                  ready: dashboard.readyToPickupItems,
                   onTabChanged: (value) => setState(() => _showReady = value),
                   onSeeAll: () => context.push(AppRoutes.transactions),
-                  onOpen: (transaction) => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => TransactionDetailScreen(transaction: transaction),
-                    ),
-                  ),
-                  onMarkCollected: _markCollected,
+                  onOpen: (transaction) async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            TransactionDetailScreen(transaction: transaction),
+                      ),
+                    );
+                    if (mounted) await _refresh();
+                  },
                 ),
               ],
             ),
@@ -240,29 +346,6 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
       ),
     );
   }
-
-  int _inProgress(List<TransactionEntity> items, DateTime now) => items.where((item) {
-        final status = item.resolveLaundryStatusAt(now);
-        return status == LaundryStatus.received ||
-            status == LaundryStatus.washing ||
-            status == LaundryStatus.drying ||
-            status == LaundryStatus.ironing;
-      }).length;
-
-  List<TransactionEntity> _ready(List<TransactionEntity> items, DateTime now) =>
-      items.where((item) => item.resolveLaundryStatusAt(now) == LaundryStatus.completed).toList()
-        ..sort((a, b) => a.estimatedFinishAt.compareTo(b.estimatedFinishAt));
-
-  List<TransactionEntity> _due(List<TransactionEntity> items, DateTime now) =>
-      items.where((item) {
-        final status = item.resolveLaundryStatusAt(now);
-        return status != LaundryStatus.collected &&
-            status != LaundryStatus.completed &&
-            _sameDay(item.estimatedFinishAt, now);
-      }).toList()..sort((a, b) => a.estimatedFinishAt.compareTo(b.estimatedFinishAt));
-
-  bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 
   void _openFilteredTransactions(TransactionListFilter filter) {
     context.go('${AppRoutes.transactions}?filter=${filter.name}');
@@ -318,7 +401,9 @@ class _QuickAction extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: primary ? Colors.white : AppColors.secondary.withValues(alpha: .55),
+                    color: primary
+                        ? Colors.white
+                        : AppColors.secondary.withValues(alpha: .55),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: AppColors.primary, size: 26),
@@ -340,7 +425,9 @@ class _QuickAction extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.bodyMuted.copyWith(
-                    color: primary ? Colors.white.withValues(alpha: .78) : AppColors.textSecondary,
+                    color: primary
+                        ? Colors.white.withValues(alpha: .78)
+                        : AppColors.textSecondary,
                     fontSize: 11,
                   ),
                 ),
@@ -358,7 +445,6 @@ class _ActiveQueue extends StatelessWidget {
   final ValueChanged<bool> onTabChanged;
   final VoidCallback onSeeAll;
   final ValueChanged<TransactionEntity> onOpen;
-  final Future<bool> Function(TransactionEntity) onMarkCollected;
   const _ActiveQueue({
     required this.showReady,
     required this.due,
@@ -366,7 +452,6 @@ class _ActiveQueue extends StatelessWidget {
     required this.onTabChanged,
     required this.onSeeAll,
     required this.onOpen,
-    required this.onMarkCollected,
   });
   @override
   Widget build(BuildContext context) {
@@ -382,7 +467,8 @@ class _ActiveQueue extends StatelessWidget {
                 children: [
                   Text('Antrean Aktif', style: AppTextStyles.headline),
                   const SizedBox(height: 4),
-                  Text('Pekerjaan yang perlu perhatian', style: AppTextStyles.bodyMuted),
+                  Text('Pekerjaan yang perlu perhatian',
+                      style: AppTextStyles.bodyMuted),
                 ],
               ),
             ),
@@ -410,31 +496,17 @@ class _ActiveQueue extends StatelessWidget {
             child: Column(
               children: [
                 for (var index = 0; index < items.length; index++) ...[
-                  if (showReady)
-                    Dismissible(
-                      key: ValueKey('collect-${items[index].id}'),
-                      direction: DismissDirection.endToStart,
-                      background: const _CollectBackground(),
-                      confirmDismiss: (_) => onMarkCollected(items[index]),
-                      child: _QueueItem(transaction: items[index], isReady: true, onTap: () => onOpen(items[index])),
-                    )
-                  else
-                    _QueueItem(transaction: items[index], onTap: () => onOpen(items[index])),
-                  if (index < items.length - 1) const Divider(indent: 76, endIndent: 16),
+                  _QueueItem(
+                    transaction: items[index],
+                    isReady: showReady,
+                    onTap: () => onOpen(items[index]),
+                  ),
+                  if (index < items.length - 1)
+                    const Divider(indent: 76, endIndent: 16),
                 ],
               ],
             ),
           ),
-        if (showReady && items.isNotEmpty) ...[
-          const SizedBox(height: 11),
-          Row(
-            children: [
-              Icon(Icons.swipe_left_rounded, size: 20, color: AppColors.textSecondary),
-              SizedBox(width: 8),
-              Text('Geser item untuk menandai sudah diambil', style: AppTextStyles.bodyMuted),
-            ],
-          ),
-        ],
       ],
     );
   }
@@ -486,7 +558,12 @@ class _Tab extends StatelessWidget {
   final int count;
   final bool selected;
   final VoidCallback onTap;
-  const _Tab({required this.icon, required this.label, required this.count, required this.selected, required this.onTap});
+  const _Tab(
+      {required this.icon,
+      required this.label,
+      required this.count,
+      required this.selected,
+      required this.onTap});
   @override
   Widget build(BuildContext context) => Expanded(
         child: InkWell(
@@ -497,13 +574,18 @@ class _Tab extends StatelessWidget {
             margin: const EdgeInsets.all(3),
             padding: const EdgeInsets.symmetric(horizontal: 7),
             decoration: BoxDecoration(
-              color: selected ? AppColors.secondary.withValues(alpha: .45) : Colors.transparent,
+              color: selected
+                  ? AppColors.secondary.withValues(alpha: .45)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(9),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textSecondary),
+                Icon(icon,
+                    size: 18,
+                    color:
+                        selected ? AppColors.primary : AppColors.textSecondary),
                 const SizedBox(width: 5),
                 Flexible(
                   child: Text(
@@ -511,7 +593,9 @@ class _Tab extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.label.copyWith(
-                      color: selected ? AppColors.primary : AppColors.textSecondary,
+                      color: selected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       letterSpacing: 0,
                     ),
@@ -519,7 +603,8 @@ class _Tab extends StatelessWidget {
                 ),
                 const SizedBox(width: 5),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: selected ? AppColors.primary : AppColors.divider,
                     borderRadius: BorderRadius.circular(10),
@@ -544,7 +629,8 @@ class _QueueItem extends StatelessWidget {
   final TransactionEntity transaction;
   final bool isReady;
   final VoidCallback onTap;
-  const _QueueItem({required this.transaction, required this.onTap, this.isReady = false});
+  const _QueueItem(
+      {required this.transaction, required this.onTap, this.isReady = false});
   @override
   Widget build(BuildContext context) {
     final status = isReady ? _Status.ready : _StatusDetails.from(transaction);
@@ -569,11 +655,13 @@ class _QueueItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('#${transaction.invoice.replaceFirst('INV-', '')}',
-                      style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700)),
+                      style: AppTextStyles.body
+                          .copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 3),
                   Text(transaction.customerName, style: AppTextStyles.body),
                   const SizedBox(height: 2),
-                  Text('${transaction.serviceName} • ${_quantity(transaction)}', style: AppTextStyles.bodyMuted),
+                  Text('${transaction.serviceName} • ${_quantity(transaction)}',
+                      style: AppTextStyles.bodyMuted),
                 ],
               ),
             ),
@@ -581,24 +669,30 @@ class _QueueItem extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(status.label(transaction.estimatedFinishAt),
-                    style: AppTextStyles.label.copyWith(color: status.color, letterSpacing: 0)),
+                    style: AppTextStyles.label
+                        .copyWith(color: status.color, letterSpacing: 0)),
                 const SizedBox(height: 4),
-                Text('Est. ${_time(transaction.estimatedFinishAt)}', style: AppTextStyles.bodyMuted),
+                Text('Est. ${_time(transaction.estimatedFinishAt)}',
+                    style: AppTextStyles.bodyMuted),
               ],
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textSecondary),
           ],
         ),
       ),
     );
   }
+
   String _quantity(TransactionEntity item) =>
       '${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity} ${item.quantityUnit}';
-  String _time(DateTime value) => '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  String _time(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 }
 
 enum _Status { late, soon, safe, ready }
+
 extension _StatusDetails on _Status {
   Color get color => switch (this) {
         _Status.late => AppColors.error,
@@ -606,13 +700,16 @@ extension _StatusDetails on _Status {
         _Status.safe => AppColors.info,
         _Status.ready => AppColors.statusSelesai,
       };
-  IconData get icon => this == _Status.ready ? Icons.inventory_2_outlined : Icons.schedule_rounded;
+  IconData get icon => this == _Status.ready
+      ? Icons.inventory_2_outlined
+      : Icons.schedule_rounded;
   static _Status from(TransactionEntity item) {
     final remaining = item.estimatedFinishAt.difference(DateTime.now());
     if (remaining.isNegative) return _Status.late;
     if (remaining.inHours <= 3) return _Status.soon;
     return _Status.safe;
   }
+
   String label(DateTime value) {
     if (this == _Status.ready) return 'Siap diambil';
     final remaining = value.difference(DateTime.now());
@@ -629,7 +726,8 @@ class _CollectBackground extends StatelessWidget {
         color: AppColors.statusSelesai,
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: const Icon(Icons.assignment_turned_in_rounded, color: Colors.white),
+        child:
+            const Icon(Icons.assignment_turned_in_rounded, color: Colors.white),
       );
 }
 
@@ -644,6 +742,7 @@ class _EmptyQueue extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.divider),
         ),
-        child: Text('Tidak ada antrean pada kategori ini.', style: AppTextStyles.bodyMuted),
+        child: Text('Tidak ada antrean pada kategori ini.',
+            style: AppTextStyles.bodyMuted),
       );
 }

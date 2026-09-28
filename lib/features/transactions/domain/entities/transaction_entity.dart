@@ -88,28 +88,7 @@ class TransactionEntity extends Equatable {
   int get remainingPayment => total - paidAmount;
 
   LaundryStatus resolveLaundryStatusAt(DateTime currentTime) {
-    if (laundryStatus == LaundryStatus.collected) {
-      return LaundryStatus.collected;
-    }
-
-    final lateThreshold = estimatedFinishAt.add(
-      Duration(hours: estimatedFinishAt.difference(createdAt).inHours),
-    );
-
-    if (currentTime.isAfter(lateThreshold)) {
-      return LaundryStatus.late;
-    }
-
-    if (currentTime.isAfter(estimatedFinishAt) ||
-        currentTime.isAtSameMomentAs(estimatedFinishAt)) {
-      return LaundryStatus.completed;
-    }
-
-    if (currentTime.isAfter(createdAt)) {
-      return LaundryStatus.washing;
-    }
-
-    return LaundryStatus.received;
+    return laundryStatus;
   }
 
   TransactionEntity copyWith({

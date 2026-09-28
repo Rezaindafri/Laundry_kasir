@@ -22,6 +22,7 @@ class ThermalReceiptService {
   Future<List<int>> buildReceipt(
     TransactionEntity transaction, {
     String businessName = 'CLEAN FRESH LAUNDRY',
+    String paperSize = '58 mm',
   }) async =>
       const [];
 
@@ -29,6 +30,7 @@ class ThermalReceiptService {
     TransactionEntity transaction, {
     required String macAddress,
     String businessName = 'CLEAN FRESH LAUNDRY',
+    String paperSize = '58 mm',
   }) async =>
       false;
 }

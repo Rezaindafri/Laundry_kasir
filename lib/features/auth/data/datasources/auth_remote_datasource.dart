@@ -24,7 +24,18 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
 
   const AuthRemoteDataSourceImpl(this.dio);
 
-@override
+  static Map<String, dynamic> normalizeUserJson(Map<String, dynamic> userJson) {
+    final normalized = Map<String, dynamic>.from(userJson);
+
+    normalized['id'] = normalized['id']?.toString() ?? 'unknown';
+    normalized['is_active'] = normalized['is_active'] ?? true;
+    normalized['avatar_url'] = normalized['avatar_url'] ?? null;
+    normalized['created_at'] = normalized['created_at'] ?? DateTime.now().toIso8601String();
+
+    return normalized;
+  }
+
+  @override
   Future<AuthResponseModel> login({
     required String username,
     required String password,
@@ -36,24 +47,15 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       );
 
       final payload = response.data['data'];
-      final Map<String, dynamic> userJson = Map<String, dynamic>.from(payload['user']);
-      
-      // --- PENYELARASAN DATA JSON ---
-      // Mencegah aplikasi crash dengan menambal field yang belum ada di Laravel
-      userJson['id'] = userJson['id'].toString(); // Ubah integer jadi string
-      userJson['is_active'] = true;               // Tambahan dummy data
-      userJson['avatar_url'] = null;              // Tambahan dummy data
-      userJson['created_at'] = DateTime.now().toIso8601String(); // Tambahan dummy data
-
-      // Cek terminal, apakah proses ini terlewati dengan sukses
-      print('=== BERHASIL PARSING JSON DARI LARAVEL ==='); 
+      final Map<String, dynamic> userJson = normalizeUserJson(
+        Map<String, dynamic>.from(payload['user'] ?? {}),
+      );
 
       return AuthResponseModel(
-        accessToken: payload['token'], // Laravel menggunakan nama key "token"
+        accessToken: payload['token'] ?? '',
         refreshToken: '',
         user: UserModel.fromJson(userJson),
       );
-      
     } on DioException catch (e) {
       print('=== DIO ERROR: ${e.response?.data ?? e.message} ===');
       if (e.error is UnauthorizedException) {
@@ -64,8 +66,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         statusCode: e.response?.statusCode,
       );
     } catch (e) {
-      // Jika masih ada data yang kurang, pesan aslinya akan ditangkap di sini!
-      print('=== ERROR KODE FLUTTER: $e ==='); 
+      print('=== ERROR KODE FLUTTER: $e ===');
       throw ServerException('Gagal memproses data: $e');
     }
   }

@@ -1,25 +1,185 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/whatsapp_launcher.dart';
 import '../../domain/entities/customer_entity.dart';
+import '../../../transactions/domain/entities/transaction_entity.dart';
+import '../../../transactions/presentation/providers/transaction_providers.dart';
+import '../../../transactions/presentation/screens/transactions_screen.dart';
 
 class CustomerDetailScreen extends ConsumerWidget {
   final CustomerEntity customer;
   const CustomerDetailScreen({required this.customer, super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('Detail Pelanggan')),
-    body: ListView(padding: const EdgeInsets.all(16), children: [
-      Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Center(child: CircleAvatar(radius: 34, backgroundColor: AppColors.primary.withValues(alpha: .1), foregroundColor: AppColors.primary, child: Text(customer.name.substring(0, 1).toUpperCase(), style: Theme.of(context).textTheme.headlineMedium))),
-        const SizedBox(height: 16), Center(child: Text(customer.name, style: Theme.of(context).textTheme.titleLarge)), const Divider(height: 32),
-        _Row('Nomor HP', customer.phone?.isNotEmpty == true ? customer.phone! : '-'), _Row('Alamat', customer.address?.isNotEmpty == true ? customer.address! : '-'), _Row('Jenis kelamin', customer.gender?.label ?? '-'),
-      ]))), const SizedBox(height: 16),
-      FilledButton.icon(onPressed: customer.phone?.isNotEmpty == true ? () async { final opened = await WhatsAppLauncher.open(customer.phone, message: 'Halo ${customer.name},'); if (context.mounted && !opened) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nomor WhatsApp tidak valid atau aplikasi tidak tersedia.'))); } : null, icon: const Icon(Icons.chat_outlined), label: const Text('Hubungi via WhatsApp')),
-    ]),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final transactions = ref.watch(transactionsProvider);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Detail Pelanggan')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: CircleAvatar(
+                      radius: 34,
+                      backgroundColor: AppColors.primary.withValues(alpha: .1),
+                      foregroundColor: AppColors.primary,
+                      child: Text(
+                        customer.name.substring(0, 1).toUpperCase(),
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: Text(
+                      customer.name,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  const Divider(height: 32),
+                  _Row('Nomor HP', customer.phone?.isNotEmpty == true ? customer.phone! : '-'),
+                  _Row('Alamat', customer.address?.isNotEmpty == true ? customer.address! : '-'),
+                  _Row('Jenis kelamin', customer.gender?.label ?? '-'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: customer.phone?.isNotEmpty == true
+                ? () async {
+                    final opened = await WhatsAppLauncher.open(
+                      customer.phone,
+                      message: 'Halo ${customer.name},',
+                    );
+                    if (context.mounted && !opened) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Nomor WhatsApp tidak valid atau aplikasi tidak tersedia.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                : null,
+            icon: const Icon(Icons.chat_outlined),
+            label: const Text('Hubungi via WhatsApp'),
+          ),
+          const SizedBox(height: 24),
+          Text('Riwayat transaksi', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          transactions.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, _) => Text('Riwayat transaksi gagal dimuat: $error'),
+            data: (items) {
+              final customerTransactions = items
+                  .where((item) => item.customerId == customer.id)
+                  .toList()
+                ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+              if (customerTransactions.isEmpty) {
+                return const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Belum ada transaksi untuk pelanggan ini.'),
+                  ),
+                );
+              }
+              return SizedBox(
+                height: 320,
+                child: ListView.separated(
+                  itemCount: customerTransactions.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final transaction = customerTransactions[index];
+                    final status = transaction.resolveLaundryStatusAt(DateTime.now());
+                    return Card(
+                      child: ListTile(
+                        title: Text(transaction.invoice),
+                        subtitle: Text(
+                          '${DateFormat('dd/MM/yyyy').format(transaction.createdAt)} • ${transaction.serviceName}',
+                        ),
+                        trailing: _StatusChip(
+                          label: status == LaundryStatus.collected
+                              ? 'Sudah diambil'
+                              : 'Belum diambil',
+                          color: status == LaundryStatus.collected
+                              ? AppColors.statusSelesai
+                              : AppColors.warning,
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TransactionDetailScreen(
+                              transaction: transaction,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
-class _Row extends StatelessWidget { final String label; final String value; const _Row(this.label, this.value); @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: Row(children: [SizedBox(width: 110, child: Text(label, style: Theme.of(context).textTheme.bodySmall)), Expanded(child: Text(value))])); }
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _StatusChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+}
+
+class _Row extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _Row(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 110,
+              child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+            ),
+            Expanded(child: Text(value)),
+          ],
+        ),
+      );
+}

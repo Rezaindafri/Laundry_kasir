@@ -16,6 +16,7 @@ import '../../features/reports/presentation/screens/reports_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/transactions/presentation/screens/transactions_screen.dart';
 import '../../features/transactions/presentation/screens/qr_scanner_screen.dart';
+import '../../features/transactions/domain/entities/transaction_entity.dart';
 import '../../features/user_management/presentation/screens/user_management_screen.dart';
 import '../../shared/enums/user_role.dart';
 
@@ -29,6 +30,7 @@ abstract class AppRoutes {
   static const services = '/services';
   static const transactions = '/transactions';
   static const collections = '/collections';
+  static const collectionSettlement = '/collection-settlement';
   static const qrScanner = '/scan-qr';
   static const reports = '/reports';
   static const users = '/users';
@@ -48,7 +50,8 @@ Page<void> _tabPage(GoRouterState state, Widget child) {
     return NoTransitionPage<void>(key: state.pageKey, child: child);
   }
 
-  final begin = transition.movesLeft ? const Offset(0.28, 0) : const Offset(-0.28, 0);
+  final begin =
+      transition.movesLeft ? const Offset(0.28, 0) : const Offset(-0.28, 0);
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
@@ -56,11 +59,11 @@ Page<void> _tabPage(GoRouterState state, Widget child) {
     reverseTransitionDuration: const Duration(milliseconds: 360),
     transitionsBuilder: (context, animation, secondaryAnimation, child) =>
         SlideTransition(
-          position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeInOutCubic),
-          ),
-          child: child,
-        ),
+      position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+        CurvedAnimation(parent: animation, curve: Curves.easeInOutCubic),
+      ),
+      child: child,
+    ),
   );
 }
 
@@ -138,7 +141,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.customers,
             pageBuilder: (context, state) => _tabPage(
               state,
-              const CustomersScreen(),
+              CustomersScreen(
+                key: ValueKey(state.uri.toString()),
+                openCreateForm: state.uri.queryParameters['create'] == 'true',
+              ),
             ),
           ),
           GoRoute(
@@ -155,11 +161,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: AppRoutes.reports,
-            redirect: (context, state) =>
-                ref.read(sessionProvider).valueOrNull?.role.canViewProfitReports ==
-                        true
-                    ? null
-                    : AppRoutes.dashboard,
+            redirect: (context, state) => ref
+                        .read(sessionProvider)
+                        .valueOrNull
+                        ?.role
+                        .canViewProfitReports ==
+                    true
+                ? null
+                : AppRoutes.dashboard,
             pageBuilder: (context, state) => _tabPage(
               state,
               const ReportsScreen(),
@@ -183,6 +192,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const TransactionsScreen(
           isCollectionMode: true,
         ),
+      ),
+      GoRoute(
+        path: AppRoutes.collectionSettlement,
+        builder: (context, state) {
+          final transaction = state.extra;
+          if (transaction is TransactionEntity) {
+            return CollectionSettlementScreen(transaction: transaction);
+          }
+          return const TransactionsScreen(isCollectionMode: true);
+        },
       ),
       GoRoute(
         path: AppRoutes.users,

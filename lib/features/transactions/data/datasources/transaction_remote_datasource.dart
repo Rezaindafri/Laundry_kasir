@@ -1,13 +1,22 @@
 ﻿import 'package:dio/dio.dart';
 
+import 'dart:typed_data';
+
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/network/api_endpoints.dart';
 import '../models/transaction_model.dart';
+import '../models/transaction_page_model.dart';
 
 abstract class TransactionRemoteDataSource {
   Future<List<TransactionModel>> getTransactions();
+  Future<TransactionPageModel> getTransactionsPage(Map<String, dynamic> query);
   Future<TransactionModel> createTransaction({required TransactionModel transaction});
   Future<TransactionModel> updateTransaction({required TransactionModel transaction});
+  Future<TransactionModel> collectTransaction({
+    required TransactionModel transaction,
+    required bool settlePayment,
+    Uint8List? proofImage,
+  });
   Future<void> deleteTransaction(String id);
 }
 
@@ -40,6 +49,31 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   }
 
   @override
+  Future<TransactionPageModel> getTransactionsPage(
+    Map<String, dynamic> query,
+  ) async {
+    try {
+      final response = await dio.get(
+        ApiEndpoints.transactions,
+        queryParameters: query,
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          listFormat: ListFormat.multiCompatible,
+        ),
+      );
+      return TransactionPageModel.fromResponse(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } on DioException catch (error) {
+      throw ServerException(
+        error.response?.data?['message']?.toString() ??
+            'Gagal mengambil transaksi.',
+        statusCode: error.response?.statusCode,
+      );
+    }
+  }
+
+  @override
   Future<TransactionModel> createTransaction({required TransactionModel transaction}) async {
     try {
       final response = await dio.post(
@@ -65,14 +99,31 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   Future<TransactionModel> updateTransaction({required TransactionModel transaction}) async {
     try {
       final payload = transaction.toJson(forRequest: false);
-      final response = await dio.put(
-        ApiEndpoints.transactionById(transaction.id.toString()),
-        data: {
-          'payment_status': payload['payment_status'],
-          'order_status': payload['order_status'],
-        },
-        options: Options(headers: {'Accept': 'application/json'}),
-      );
+      final isPaymentSettlement =
+          payload['payment_status'] == 'paid' ||
+          (payload['paid_amount'] as num? ?? 0) > 0;
+
+      final response = isPaymentSettlement
+          ? await dio.post(
+              ApiEndpoints.payment(transaction.id.toString()),
+              data: {
+                'paid_amount': payload['paid_amount'],
+                'payment_method': payload['payment_method'] ?? 'cash',
+                'payment_status': payload['payment_status'],
+              },
+              options: Options(headers: {'Accept': 'application/json'}),
+            )
+          : await dio.put(
+              ApiEndpoints.transactionById(transaction.id.toString()),
+              data: {
+                'paid_amount': payload['paid_amount'],
+                'payment_status': payload['payment_status'],
+                'payment_method': payload['payment_method'] ?? 'cash',
+                'laundry_status': payload['laundry_status'],
+                'order_status': payload['order_status'],
+              },
+              options: Options(headers: {'Accept': 'application/json'}),
+            );
 
       final data = response.data is Map<String, dynamic>
           ? (response.data['data'] as Map<String, dynamic>? ?? response.data)
@@ -82,6 +133,41 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
     } on DioException catch (error) {
       throw ServerException(
         error.response?.data?['message']?.toString() ?? 'Gagal memperbarui transaksi.',
+        statusCode: error.response?.statusCode,
+      );
+    }
+  }
+
+  @override
+  Future<TransactionModel> collectTransaction({
+    required TransactionModel transaction,
+    required bool settlePayment,
+    Uint8List? proofImage,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'settle_payment': settlePayment,
+        'payment_method': transaction.paymentMethod,
+      };
+      if (proofImage != null) {
+        data['proof_image'] = MultipartFile.fromBytes(
+          proofImage,
+          filename: 'bukti-pengambilan.jpg',
+        );
+      }
+      final response = await dio.post(
+        ApiEndpoints.collection(transaction.id.toString()),
+        data: FormData.fromMap(data),
+        options: Options(headers: {'Accept': 'application/json'}),
+      );
+      final payload = response.data is Map<String, dynamic>
+          ? (response.data['data'] as Map<String, dynamic>? ?? response.data)
+          : <String, dynamic>{};
+      return TransactionModel.fromJson(payload);
+    } on DioException catch (error) {
+      throw ServerException(
+        error.response?.data?['message']?.toString() ??
+            'Gagal mencatat pengambilan laundry.',
         statusCode: error.response?.statusCode,
       );
     }

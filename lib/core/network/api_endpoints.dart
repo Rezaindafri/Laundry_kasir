@@ -30,14 +30,14 @@ abstract class ApiEndpoints {
       '/transactions/invoice/$invoice';
   static String updateStatus(String id) => '/transactions/$id/status';
   static String payment(String id) => '/transactions/$id/payment';
+  static String collection(String id) => '/transactions/$id/collection';
 
   // Dashboard & Reports
   static const String dashboardOwner = '/dashboard/owner';
   static const String dashboardKasir = '/dashboard/kasir';
   static const String reportsRevenue = '/reports/revenue';
   static const String reportsStatistics = '/reports/statistics';
-  static const String reportsExportPdf = '/reports/export/pdf';
-  static const String reportsExportExcel = '/reports/export/excel';
+  static const String reportsExport = '/reports/export';
 
   // Settings
   static const String settings = '/settings';

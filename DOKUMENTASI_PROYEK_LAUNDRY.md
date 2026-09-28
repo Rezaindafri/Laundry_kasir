@@ -13,7 +13,7 @@ Proyek ini adalah aplikasi manajemen laundry berbasis mobile Flutter yang didesa
 - laporan dan administrasi
 - pencetakan bon/struk
 - scan QR transaksi
-- pengaturan printer dan profil laundry
+- pengaturan printer dan profil pengguna
 
 Aplikasi ini dibangun dengan pendekatan Clean Architecture di sisi frontend, sedangkan backend menggunakan Laravel dengan autentikasi Sanctum dan API REST.
 
@@ -29,23 +29,48 @@ Backend Laravel berada pada:
 
 ## 2. Status Proyek Saat Ini
 
-Proyek ini sudah berjalan dalam fase integrasi penuh antara frontend Flutter dan backend Laravel. Struktur aplikasi sudah tidak lagi murni mock-only, meskipun masih ada opsi fallback mock untuk kebutuhan development/test.
+Per 14 September 2026, proyek sudah memasuki fase integrasi backend yang stabil untuk alur utama operasional laundry. Struktur aplikasi tidak lagi berbasis mock-only untuk transaksi dan dashboard operasional utama, meskipun fallback mock tetap tersedia untuk kebutuhan pengembangan dan pengujian.
 
-Beberapa indikator status:
+Beberapa indikator status saat ini:
 
-- Autentikasi login dengan JWT-like token via Laravel Sanctum sudah siap.
-- Data pelanggan dan layanan sudah bergerak dari mock ke API backend.
-- Transaksi sudah terintegrasi ke backend.
-- Router dan role-based access sudah dibuat.
-- UI untuk transaksi, pelanggan, layanan, laporan, scan QR, dan printer sudah dibangun.
-- Backend menyediakan endpoint API dasar CRUD untuk customer, service, dan transaction.
+- Autentikasi login dan session pengguna melalui Laravel Sanctum sudah berjalan dan tervalidasi.
+- Data pelanggan dan layanan sudah berjalan dari frontend ke API backend.
+- Transaksi sudah terintegrasi ke backend dengan alur pembayaran yang benar.
+- Dashboard owner sudah menghitung pendapatan dari nilai `paid_amount` yang benar, bukan dari asumsi UI.
+- Router dan role-based access sudah dibuat untuk role owner, kasir, dan super owner.
+- UI untuk transaksi, pelanggan, layanan, dashboard, scan QR, dan printer sudah dibangun dan berkembang sesuai kebutuhan operasional.
+- Backend menyertakan endpoint dasar CRUD untuk customer, service, transaction, serta dashboard owner/kasir.
+- Masalah kontradiksi antara status pembayaran dan pendapatan dashboard sudah diperbaiki dan divalidasi dengan test Laravel.
+
+### Pembaruan teknis terbaru (14 September 2026)
+
+Revisi yang sudah diterapkan meliputi:
+
+- koreksi login backend: akun aktif/non-aktif dipastikan sesuai kolom `is_active` di database, dan bug migrasi/kolom yang belum ada sudah diperbaiki
+- sinkronisasi status pembayaran dan laundry: `payment_status` mendukung `unpaid`, `downPayment`, dan `paid`; `laundry_status` menerima `late` dan status pengambilan yang konsisten
+- finalisasi kontrak transaksi untuk dashboard owner dan kasir agar pendapatan mengikuti `paid_amount` yang benar-benar ada di backend
+- implementasi endpoint profil pengguna: `GET /api/profile`, `PATCH /api/profile`, dan `PATCH /api/profile/password`
+- implementasi upload bukti pengambilan: `POST /api/transactions/{id}/proof` dengan penyimpanan file ke storage public
+- implementasi export laporan CSV: `GET /api/reports/export?type=csv&start_date=...&end_date=...`
+- validasi regresi Laravel untuk auth, status transaksi, profil, upload bukti, dan export laporan
+- perbaikan empty-state chart dan overflow layout pada dashboard owner
+- penyesuaian label KPI seperti `Belum Diambil` agar sesuai dengan business logic yang benar
 
 Konfigurasi utama app mobile ada di `lib/core/constants/app_constants.dart`:
 
-- `baseUrl = 'http://192.168.1.12/api-indafri-laundry/public/api'`
+- `baseUrl = 'http://192.168.1.5/api-indafri-laundry/public/api'`
 - `useMockApi = false`
 
-Artinya, aplikasi sekarang diarahkan ke API server lokal real, bukan dummy.
+Artinya, aplikasi saat ini diarahkan ke server Laravel real dan bukan data dummy untuk alur operasional utama.
+
+### Bukti validasi terbaru
+
+Backend telah divalidasi melalui Laravel test yang mencakup auth, status transaksi, profil, upload bukti, dan export laporan:
+
+- `php artisan test tests/Feature/ProfileProofAndExportTest.php tests/Feature/TransactionStatusContractTest.php tests/Feature/UserManagementAndAuthTest.php`
+- hasil: `8 tests passed` dengan `28 assertions`
+
+Dengan demikian, login akun aktif, status transaksi, profil user, upload bukti, dan export laporan sudah dinyatakan berfungsi sesuai kontrak backend yang diperbarui.
 
 ---
 
@@ -59,7 +84,7 @@ Artinya, aplikasi sekarang diarahkan ke API server lokal real, bukan dummy.
 - Material 3 untuk design system
 - Dio untuk HTTP client
 - flutter_secure_storage dan shared_preferences untuk sesi/token
-- image_picker untuk mengambil bukti foto pengambilan
+- image_picker untuk mengambil bukti foto pengambilan dan gambar QR dari galeri
 - QR code scanner dan generator
 - Bluetooth thermal printer support
 - Intl untuk format angka/tanggal lokal Indonesia
@@ -309,10 +334,12 @@ Ini adalah fitur paling penting dari sistem.
 - melihat estimasi selesai
 - melihat status laundry
 - melihat transaksi sebelumnya
-- filter transaksi melalui tombol dropdown
+- filter transaksi melalui panel bottom sheet
+- memilih lebih dari satu status transaksi sekaligus
 - filter periode pembuatan transaksi (tanggal dari--sampai)
 - pencarian invoice, pelanggan, nomor telepon, atau layanan
 - membuka detail transaksi
+- pengurutan transaksi berdasarkan status pengambilan dan waktu transaksi
 - QR invoice
 - proses pengambilan/pelunasan pada halaman khusus
 
@@ -348,14 +375,17 @@ Set di `TransactionsScreen`:
 - Semua
 - Hari Ini
 - Diterima
-- Diproses
 - Selesai
 - Belum Diambil
 - Sudah Diambil
 - Lunas
 - Belum Lunas
 
-Filter status dan periode dapat dipakai bersamaan. Tombol `Filter` berbentuk pill-outline berada di bawah search bar sisi kanan. Pada halaman Pengambilan, daftar otomatis hanya memuat transaksi yang belum diambil serta pilihan filter Sudah Diambil/Belum Diambil tidak ditampilkan.
+Filter status bersifat multi-select dan dapat dipakai bersama filter periode. Panel filter dibuka melalui tombol `Filter` berbentuk pill-outline di bawah search bar sisi kanan. Saat panel pertama kali dibuka, semua checkbox status kosong. Checkbox `Semua` dapat dipilih untuk mencentang seluruh status.
+
+Pada halaman Pengambilan, daftar otomatis hanya memuat transaksi yang belum diambil. Pilihan status `Sudah Diambil` dan `Belum Diambil` tidak ditampilkan pada panel filter tersebut.
+
+Urutan default daftar transaksi adalah transaksi yang belum diambil dari terbaru ke terlama, kemudian transaksi yang sudah diambil dari terbaru ke terlama.
 
 ### Flow transaksi
 
@@ -391,7 +421,8 @@ Jadi ada keselarasan umum antara frontend dan backend, meski beberapa status sep
 Fitur sudah diterapkan untuk:
 
 - generate QR invoice
-- scan QR untuk membuka halaman Pengambilan/Pelunasan
+- scan QR menggunakan kamera untuk membuka halaman Pengambilan/Pelunasan
+- memilih gambar QR dari galeri dan menganalisisnya menggunakan `MobileScannerController.analyzeImage`
 
 ### File utama
 
@@ -434,7 +465,7 @@ Akses biasanya hanya untuk owner/superowner.
 
 Aplikasi sudah mempersiapkan pengaturan:
 
-- profil laundry
+- profil pengguna dengan field `Nama pengguna`
 - printer default
 - perangkat printer bluetooth
 - setting kertas/format bon
@@ -491,7 +522,7 @@ Dari README project frontend, alur pengembangan yang sudah terjadi adalah:
 
 - laporan
 - manajemen user
-- pengaturan profil dan printer
+- pengaturan profil pengguna dan printer
 - cetak bon thermal
 
 ---
@@ -871,6 +902,8 @@ Pemetaan kartu statistik:
 - `Laundry Selesai` -> Selesai
 - `Belum Diambil` -> Belum Diambil
 
+Pada bagian `Antrean Aktif`, tab `Siap Diambil` menampilkan transaksi yang sudah mencapai atau melewati waktu estimasi selesai, termasuk transaksi telat dari hari sebelumnya. Daftar ini hanya bersifat informasi dan tidak menggunakan gesture swipe. Transaksi akan hilang setelah statusnya diubah menjadi `collected` melalui proses Ambil/Pelunasan manual.
+
 Button yang penting:
 
 - `Transaksi Baru` -> membuka halaman pembuatan transaksi baru
@@ -933,6 +966,8 @@ Tujuan:
 - memudahkan saat membuat transaksi baru karena data pelanggan sudah mudah dikenali
 
 Biasanya halaman ini dibuka dari daftar pelanggan ketika user tap card pelanggan.
+
+Selain data profil, halaman ini menampilkan history transaksi milik pelanggan tersebut. History berisi invoice, tanggal transaksi, layanan, serta status `Sudah diambil` atau `Belum diambil`. Sekitar empat transaksi ditampilkan dalam area list yang dapat discroll. Tap pada salah satu transaksi membuka halaman Detail Transaksi.
 
 ---
 
@@ -1036,6 +1071,8 @@ Setiap card transaksi menampilkan:
 
 Saat user menekan card transaksi, aplikasi membuka halaman detail transaksi.
 
+Daftar transaksi menggunakan urutan terbaru ke terlama, dengan transaksi yang sudah diambil ditempatkan setelah transaksi yang belum diambil.
+
 ---
 
 ### 17.9 Detail Transaksi
@@ -1053,6 +1090,7 @@ Yang ada di halaman ini:
 - status pembayaran
 - total biaya
 - tombol `Hubungi via WhatsApp`
+- tombol `Ambil / Pelunasan` menuju halaman Pengambilan/Pelunasan
 - tombol `Cetak Bon`
 - menu `Hapus transaksi` jika role cocok
 
@@ -1082,7 +1120,7 @@ Halaman berisi:
 - detail tagihan: total, sudah dibayar, dan sisa tagihan
 - tombol bersebelahan `Ambil Saja` dan `Lunasi`
 
-Bukti foto wajib diambil terlebih dahulu. Foto dikompresi lalu disimpan secara lokal pada perangkat memakai `shared_preferences`; bukti ini belum diunggah ke backend Laravel.
+Bukti foto bersifat opsional. Jika digunakan, foto dikompresi lalu disimpan secara lokal pada perangkat memakai `shared_preferences`; bukti ini belum diunggah ke backend Laravel.
 
 Perilaku tombol:
 
@@ -1091,6 +1129,8 @@ Perilaku tombol:
 
 Sebelum penyimpanan, aplikasi menampilkan dialog konfirmasi. Setelah berhasil, halaman kembali ke daftar Pengambilan sehingga transaksi tersebut tidak lagi tampil pada daftar transaksi belum diambil.
 
+Daftar Pengambilan direfresh otomatis setelah perubahan berhasil disimpan.
+
 ### 17.11 Halaman Scan QR
 
 Halaman ini digunakan untuk scan QR code dari bon laundry.
@@ -1098,6 +1138,7 @@ Halaman ini digunakan untuk scan QR code dari bon laundry.
 Fungsi:
 
 - membuka kamera
+- memilih gambar QR dari galeri
 - mendeteksi QR code
 - membandingkan hasil scan dengan nomor invoice transaksi yang ada di database
 - jika cocok, aplikasi langsung membuka halaman Pengambilan/Pelunasan transaksi tersebut
@@ -1106,11 +1147,10 @@ Fungsi:
 Flow:
 
 1. user masuk menu Scan QR
-2. kamera aktif
-3. user arahkan ke QR kode pada bon laundry
-4. aplikasi membaca invoice
-5. aplikasi mencari transaksi yang punya invoice sama
-6. jika ada, halaman Pengambilan/Pelunasan dibuka otomatis
+2. user memilih kamera atau gambar dari galeri
+3. aplikasi membaca invoice
+4. aplikasi mencari transaksi yang punya invoice sama
+5. jika ada, halaman Pengambilan/Pelunasan dibuka otomatis
 
 Ini berguna untuk pengecekan transaksi tanpa mencari manual di list transaksi.
 
@@ -1165,7 +1205,7 @@ Halaman pengaturan digunakan untuk mengatur data bisnis dan printer.
 
 Form yang ada:
 
-- Nama laundry
+- Nama pengguna
 - Nomor telepon laundry
 - Alamat laundry
 - ukuran kertas struk

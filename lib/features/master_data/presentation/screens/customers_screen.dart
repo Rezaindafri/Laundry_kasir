@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -12,18 +14,68 @@ import 'customer_detail_screen.dart';
 import '../../domain/entities/customer_entity.dart';
 import '../providers/master_data_providers.dart';
 
-class CustomersScreen extends ConsumerWidget {
-  const CustomersScreen({super.key});
+class CustomersScreen extends ConsumerStatefulWidget {
+  final bool openCreateForm;
+
+  const CustomersScreen({this.openCreateForm = false, super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomersScreen> createState() => _CustomersScreenState();
+}
+
+class _CustomersScreenState extends ConsumerState<CustomersScreen> {
+  var _quickCreateHandled = false;
+  var _formOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleQuickCreate();
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomersScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.openCreateForm && widget.openCreateForm) {
+      _scheduleQuickCreate();
+    }
+  }
+
+  void _scheduleQuickCreate() {
+    if (!widget.openCreateForm || _quickCreateHandled) return;
+    _quickCreateHandled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _showForm(context, ref);
+      if (mounted && widget.openCreateForm) {
+        context.go(AppRoutes.customers);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final customers = ref.watch(customersProvider);
     final user = ref.watch(sessionProvider).valueOrNull;
     final currentRole = user?.role;
     final isKasir = currentRole == UserRole.kasir;
 
     return Scaffold(
-      appBar: AppBar(automaticallyImplyLeading: false, title: const Text('Pelanggan'), actions: [IconButton(icon: const Icon(Icons.search), tooltip: 'Cari pelanggan', onPressed: () { final list = customers.valueOrNull == null ? const <CustomerEntity>[] : customers.valueOrNull!; showSearch(context: context, delegate: CustomerSearchDelegate(list)); })]),
+      appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Pelanggan'),
+          actions: [
+            IconButton(
+                icon: const Icon(Icons.search),
+                tooltip: 'Cari pelanggan',
+                onPressed: () {
+                  final list = customers.valueOrNull == null
+                      ? const <CustomerEntity>[]
+                      : customers.valueOrNull!;
+                  showSearch(
+                      context: context, delegate: CustomerSearchDelegate(list));
+                })
+          ]),
       floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _showForm(context, ref),
           icon: const Icon(Icons.person_add_alt_1_outlined),
@@ -55,7 +107,8 @@ class CustomersScreen extends ConsumerWidget {
                     ? null
                     : IconButton(
                         icon: const Icon(Icons.edit_outlined),
-                        onPressed: () => _showForm(context, ref, customer: customer),
+                        onPressed: () =>
+                            _showForm(context, ref, customer: customer),
                       ),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
@@ -83,89 +136,22 @@ class CustomersScreen extends ConsumerWidget {
 
   Future<void> _showForm(BuildContext context, WidgetRef ref,
       {CustomerEntity? customer}) async {
-    final formKey = GlobalKey<FormState>();
-    final name = TextEditingController(text: customer?.name);
-    final phone = TextEditingController(text: customer?.phone);
-    final address = TextEditingController(text: customer?.address);
-    var gender = customer?.gender;
+    if (_formOpen) return;
+    _formOpen = true;
     final result = await showModalBottomSheet<CustomerEntity>(
-        context: context,
-        isScrollControlled: true,
-        builder: (sheetContext) => StatefulBuilder(
-            builder: (sheetContext, setState) => Padding(
-                  padding: EdgeInsets.fromLTRB(24, 24, 24,
-                      24 + MediaQuery.viewInsetsOf(sheetContext).bottom),
-                  child: Form(
-                      key: formKey,
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Text(
-                            customer == null
-                                ? 'Pelanggan Baru'
-                                : 'Ubah Pelanggan',
-                            style: Theme.of(sheetContext).textTheme.titleLarge),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                            controller: name,
-                            decoration: const InputDecoration(
-                                labelText: 'Nama pelanggan'),
-                            validator: (value) => Validators.required(value,
-                                field: 'Nama pelanggan')),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                            controller: phone,
-                            keyboardType: TextInputType.phone,
-                            decoration: const InputDecoration(
-                                labelText: 'Nomor HP (opsional)'),
-                            validator: (value) =>
-                                value == null || value.trim().isEmpty
-                                    ? null
-                                    : Validators.phone(value)),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                            controller: address,
-                            decoration: const InputDecoration(
-                                labelText: 'Alamat (opsional)')),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<CustomerGender?>(
-                            initialValue: gender,
-                            decoration: const InputDecoration(
-                                labelText: 'Jenis kelamin (opsional)'),
-                            items: [
-                              const DropdownMenuItem<CustomerGender?>(
-                                  value: null, child: Text('Tidak dipilih')),
-                              ...CustomerGender.values.map((item) =>
-                                  DropdownMenuItem<CustomerGender?>(
-                                      value: item, child: Text(item.label)))
-                            ],
-                            onChanged: (value) =>
-                                setState(() => gender = value)),
-                        const SizedBox(height: 20),
-                        FilledButton(
-                            onPressed: () {
-                              if (formKey.currentState!.validate())
-                                Navigator.pop(
-                                    sheetContext,
-                                    CustomerEntity(
-                                        id: customer?.id ?? '',
-                                        name: name.text.trim(),
-                                        phone: phone.text.trim().isEmpty
-                                            ? null
-                                            : phone.text.trim(),
-                                        address: address.text.trim().isEmpty
-                                            ? null
-                                            : address.text.trim(),
-                                        gender: gender));
-                            },
-                            child: const Text('Simpan')),
-                      ])),
-                )));
-    if (result != null) {
-      final saved = await ref.read(customersProvider.notifier).save(result);
-      if (context.mounted) _showResult(context, saved);
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (_) => _CustomerFormSheet(customer: customer),
+    );
+    _formOpen = false;
+    if (!mounted || result == null) return;
+
+    final saved = await ref.read(customersProvider.notifier).save(result);
+    if (saved.isSuccess) {
+      await ref.read(customersProvider.notifier).refresh();
     }
-    name.dispose();
-    phone.dispose();
-    address.dispose();
+    if (mounted) _showResult(context, saved);
   }
 
   Future<void> _confirmDelete(
@@ -195,6 +181,133 @@ class CustomersScreen extends ConsumerWidget {
           const SnackBar(content: Text('Data pelanggan berhasil disimpan.'))),
       error: (Failure failure) => ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(failure.message))));
+}
+
+/// Owns its controllers for the entire lifetime of the bottom-sheet route.
+/// They must not be owned by [_CustomersScreenState], because that state gets
+/// the result before the bottom-sheet exit animation has fully unmounted its
+/// TextFormFields.
+class _CustomerFormSheet extends StatefulWidget {
+  final CustomerEntity? customer;
+
+  const _CustomerFormSheet({this.customer});
+
+  @override
+  State<_CustomerFormSheet> createState() => _CustomerFormSheetState();
+}
+
+class _CustomerFormSheetState extends State<_CustomerFormSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _phone;
+  late final TextEditingController _address;
+  CustomerGender? _gender;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.customer?.name);
+    _phone = TextEditingController(text: widget.customer?.phone);
+    _address = TextEditingController(text: widget.customer?.address);
+    _gender = widget.customer?.gender;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    _address.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).pop(
+      CustomerEntity(
+        id: widget.customer?.id ?? '',
+        name: _name.text.trim(),
+        phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+        address: _address.text.trim().isEmpty ? null : _address.text.trim(),
+        gender: _gender,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardInset =
+        MediaQuery.viewInsetsOf(context).bottom.clamp(0.0, 360.0).toDouble();
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.customer == null ? 'Pelanggan Baru' : 'Ubah Pelanggan',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _name,
+                  decoration:
+                      const InputDecoration(labelText: 'Nama pelanggan'),
+                  validator: (value) =>
+                      Validators.required(value, field: 'Nama pelanggan'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  decoration:
+                      const InputDecoration(labelText: 'Nomor HP (opsional)'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? null
+                      : Validators.phone(value),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _address,
+                  decoration:
+                      const InputDecoration(labelText: 'Alamat (opsional)'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<CustomerGender?>(
+                  initialValue: _gender,
+                  decoration: const InputDecoration(
+                    labelText: 'Jenis kelamin (opsional)',
+                  ),
+                  items: [
+                    const DropdownMenuItem<CustomerGender?>(
+                      value: null,
+                      child: Text('Tidak dipilih'),
+                    ),
+                    ...CustomerGender.values.map(
+                      (item) => DropdownMenuItem<CustomerGender?>(
+                        value: item,
+                        child: Text(item.label),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _gender = value),
+                ),
+                const SizedBox(height: 20),
+                FilledButton(onPressed: _save, child: const Text('Simpan')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ErrorState extends StatelessWidget {

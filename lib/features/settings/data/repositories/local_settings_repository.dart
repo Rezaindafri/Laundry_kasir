@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../core/constants/storage_keys.dart';
 import '../../domain/entities/laundry_settings.dart';
 
 class LocalSettingsRepository {
@@ -10,12 +11,15 @@ class LocalSettingsRepository {
   static const _address = 'settings_laundry_address';
   static const _paper = 'settings_paper_size';
   static const _printer = 'settings_default_printer';
+  static const _printerName = StorageKeys.defaultPrinterName;
   LaundrySettings load() => LaundrySettings(
-      businessName: preferences.getString(_name) ?? 'Clean Fresh Laundry',
-      phone: preferences.getString(_phone) ?? '',
-      address: preferences.getString(_address) ?? '',
-      paperSize: preferences.getString(_paper) ?? '58 mm',
-      defaultPrinter: preferences.getString(_printer),);
+        businessName: preferences.getString(_name) ?? 'Clean Fresh Laundry',
+        phone: preferences.getString(_phone) ?? '',
+        address: preferences.getString(_address) ?? '',
+        paperSize: preferences.getString(_paper) ?? '58 mm',
+        defaultPrinter: preferences.getString(_printer),
+        defaultPrinterName: preferences.getString(_printerName),
+      );
   Future<void> save(LaundrySettings value) async {
     await preferences.setString(_name, value.businessName);
     await preferences.setString(_phone, value.phone);
@@ -23,8 +27,15 @@ class LocalSettingsRepository {
     await preferences.setString(_paper, value.paperSize);
     if (value.defaultPrinter == null || value.defaultPrinter!.isEmpty) {
       await preferences.remove(_printer);
+      await preferences.remove(_printerName);
     } else {
       await preferences.setString(_printer, value.defaultPrinter!);
+      if (value.defaultPrinterName == null ||
+          value.defaultPrinterName!.isEmpty) {
+        await preferences.remove(_printerName);
+      } else {
+        await preferences.setString(_printerName, value.defaultPrinterName!);
+      }
     }
   }
 }

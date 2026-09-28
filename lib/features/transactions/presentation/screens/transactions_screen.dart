@@ -1,12 +1,12 @@
-import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:screenshot/screenshot.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
@@ -19,10 +19,13 @@ import '../../../master_data/presentation/screens/customer_search_delegate.dart'
 import '../../../master_data/presentation/screens/service_search_delegate.dart';
 import '../../../printing/presentation/providers/printing_providers.dart';
 import '../../../printing/domain/entities/printer_device.dart';
+import '../../../settings/domain/entities/laundry_settings.dart';
 import '../../../settings/presentation/providers/settings_providers.dart';
 import '../../domain/entities/transaction_entity.dart';
+import '../../domain/entities/transaction_page_entity.dart';
 import '../providers/transaction_providers.dart';
 import '../../../../core/utils/whatsapp_launcher.dart';
+import '../../../../core/utils/whatsapp_receipt_launcher.dart';
 
 enum TransactionListFilter {
   all,
@@ -30,6 +33,7 @@ enum TransactionListFilter {
   received,
   washing,
   completed,
+  late,
   notCollected,
   collected,
   paid,
@@ -43,6 +47,7 @@ extension TransactionListFilterLabel on TransactionListFilter {
         TransactionListFilter.received => 'Diterima',
         TransactionListFilter.washing => 'Diproses',
         TransactionListFilter.completed => 'Selesai',
+        TransactionListFilter.late => 'Terlambat',
         TransactionListFilter.notCollected => 'Belum Diambil',
         TransactionListFilter.collected => 'Sudah Diambil',
         TransactionListFilter.paid => 'Lunas',
@@ -66,6 +71,7 @@ extension TransactionListFilterLabel on TransactionListFilter {
             resolvedStatus == LaundryStatus.ironing,
       TransactionListFilter.completed =>
         resolvedStatus == LaundryStatus.completed,
+      TransactionListFilter.late => resolvedStatus == LaundryStatus.late,
       TransactionListFilter.notCollected =>
         resolvedStatus != LaundryStatus.collected,
       TransactionListFilter.collected =>
@@ -101,33 +107,119 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 }
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
-  late TransactionListFilter _filter;
+  late Set<TransactionListFilter> _filters;
   DateTimeRange? _dateRange;
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   String _searchQuery = '';
+  Timer? _searchDebounce;
+  AsyncValue<TransactionPageEntity> _pageState = const AsyncLoading();
+  bool _loadingMore = false;
 
   @override
   void initState() {
     super.initState();
-    _filter = widget.initialFilter;
+    _filters = widget.initialFilter == TransactionListFilter.all
+        ? <TransactionListFilter>{}
+        : <TransactionListFilter>{widget.initialFilter};
+    _scrollController.addListener(_onScroll);
+    Future.microtask(_loadFirstPage);
   }
 
-  bool _matchesDateRange(TransactionEntity transaction) {
+  Map<String, dynamic> _queryForPage(int page) {
+    final selected = _filters.contains(TransactionListFilter.all)
+        ? <TransactionListFilter>{}
+        : _filters;
+    final laundryStatuses = <String>[];
+    if (selected.contains(TransactionListFilter.received) &&
+        !selected.contains(TransactionListFilter.washing)) {
+      laundryStatuses.add('received');
+    }
+    if (selected.contains(TransactionListFilter.completed))
+      laundryStatuses.add('completed');
+    if (selected.contains(TransactionListFilter.late))
+      laundryStatuses.add('late');
+    if (selected.contains(TransactionListFilter.notCollected)) {
+      laundryStatuses.addAll(['completed', 'late']);
+    }
+    final paymentStatuses = <String>[];
+    if (selected.contains(TransactionListFilter.paid))
+      paymentStatuses.add('paid');
+    if (selected.contains(TransactionListFilter.unpaid)) {
+      paymentStatuses.addAll(['unpaid', 'downPayment']);
+    }
+    final query = <String, dynamic>{
+      'page': page,
+      'per_page': 20,
+    };
+    if (selected.contains(TransactionListFilter.washing)) {
+      // "Diproses" remains active only until its scheduled finish time.
+      query['active_processing'] = 1;
+    }
+    if (_searchQuery.trim().isNotEmpty) query['search'] = _searchQuery.trim();
+    if (laundryStatuses.isNotEmpty) query['laundry_status'] = laundryStatuses;
+    if (paymentStatuses.isNotEmpty) query['payment_status'] = paymentStatuses;
+    if (selected.contains(TransactionListFilter.collected) &&
+        !selected.contains(TransactionListFilter.notCollected)) {
+      query['collected'] = 1;
+    } else if (widget.isCollectionMode ||
+        (selected.contains(TransactionListFilter.notCollected) &&
+            !selected.contains(TransactionListFilter.collected))) {
+      query['collected'] = 0;
+    }
     final range = _dateRange;
-    if (range == null) return true;
-    final date = DateUtils.dateOnly(transaction.createdAt);
-    final start = DateUtils.dateOnly(range.start);
-    final end = DateUtils.dateOnly(range.end);
-    return !date.isBefore(start) && !date.isAfter(end);
+    if (range != null) {
+      query['from'] = DateUtils.dateOnly(range.start).toIso8601String();
+      query['to'] = DateUtils.dateOnly(range.end).toIso8601String();
+    } else if (selected.contains(TransactionListFilter.today)) {
+      final today = DateUtils.dateOnly(DateTime.now()).toIso8601String();
+      query['from'] = today;
+      query['to'] = today;
+    }
+    return query;
   }
 
-  bool _matchesSearch(TransactionEntity transaction) {
-    final query = _searchQuery.trim().toLowerCase();
-    if (query.isEmpty) return true;
-    return transaction.invoice.toLowerCase().contains(query) ||
-        transaction.customerName.toLowerCase().contains(query) ||
-        transaction.customerPhone.toLowerCase().contains(query) ||
-        transaction.serviceName.toLowerCase().contains(query);
+  Future<void> _loadFirstPage() async {
+    if (mounted) setState(() => _pageState = const AsyncLoading());
+    final result =
+        await ref.read(transactionRepositoryProvider).getTransactionsPage(
+              _queryForPage(1),
+            );
+    if (!mounted) return;
+    setState(() => _pageState = result.when(
+          success: AsyncData.new,
+          error: (failure) => AsyncError(failure, StackTrace.current),
+        ));
+  }
+
+  Future<void> _loadMore() async {
+    final page = _pageState.valueOrNull;
+    if (_loadingMore || page == null || !page.hasMore) return;
+    setState(() => _loadingMore = true);
+    final result =
+        await ref.read(transactionRepositoryProvider).getTransactionsPage(
+              _queryForPage(page.currentPage + 1),
+            );
+    if (!mounted) return;
+    result.when(
+      success: (next) => setState(() {
+        _pageState = AsyncData(TransactionPageEntity(
+          items: [...page.items, ...next.items],
+          currentPage: next.currentPage,
+          lastPage: next.lastPage,
+          total: next.total,
+        ));
+        _loadingMore = false;
+      }),
+      error: (_) => setState(() => _loadingMore = false),
+    );
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.extentAfter < 240) {
+      _loadMore();
+    }
   }
 
   Future<void> _openFilterSheet(
@@ -139,27 +231,32 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       showDragHandle: true,
       builder: (_) => _TransactionFilterSheet(
         availableFilters: availableFilters,
-        initialFilter: _filter,
+        initialFilters: _filters,
         initialDateRange: _dateRange,
       ),
     );
     if (selection != null && mounted) {
       setState(() {
-        _filter = selection.filter;
+        _filters = selection.filters;
         _dateRange = selection.dateRange;
       });
+      _loadFirstPage();
     }
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final transactions = ref.watch(transactionsProvider);
+    final transactions = _pageState;
     final availableFilters = TransactionListFilter.values
         .where(
           (filter) =>
@@ -176,9 +273,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       floatingActionButton: widget.isCollectionMode
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NewTransactionScreen()),
-              ),
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => const NewTransactionScreen()),
+                );
+                if (mounted) await _loadFirstPage();
+              },
               icon: const Icon(Icons.add),
               label: const Text('Transaksi Baru'),
             ),
@@ -186,16 +287,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
             Center(child: Text('Transaksi gagal dimuat: $error')),
-        data: (items) {
-          if (items.isEmpty) return const _EmptyTransactions();
-          final collectionItems = widget.isCollectionMode
-              ? items.where(TransactionListFilter.notCollected.matches)
-              : items;
-          final filtered = collectionItems
-              .where(_filter.matches)
-              .where(_matchesDateRange)
-              .where(_matchesSearch)
-              .toList();
+        data: (page) {
+          final items = page.items;
           return Column(
             children: [
               Padding(
@@ -204,7 +297,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   children: [
                     TextField(
                       controller: _searchController,
-                      onChanged: (value) => setState(() => _searchQuery = value),
+                      onChanged: (value) {
+                        setState(() => _searchQuery = value);
+                        _searchDebounce?.cancel();
+                        _searchDebounce = Timer(
+                          const Duration(milliseconds: 350),
+                          _loadFirstPage,
+                        );
+                      },
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
                         hintText: 'Cari invoice, pelanggan, atau layanan',
@@ -217,6 +317,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                 onPressed: () {
                                   _searchController.clear();
                                   setState(() => _searchQuery = '');
+                                  _searchDebounce?.cancel();
+                                  _loadFirstPage();
                                 },
                               ),
                       ),
@@ -231,7 +333,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.textSecondary,
                           minimumSize: const Size(0, 42),
-                          side: const BorderSide(color: AppColors.textSecondary),
+                          side:
+                              const BorderSide(color: AppColors.textSecondary),
                           shape: const StadiumBorder(),
                         ),
                       ),
@@ -240,31 +343,39 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 ),
               ),
               Expanded(
-                child: filtered.isEmpty
+                child: items.isEmpty
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
                           child: Text(
-                            'Tidak ada transaksi untuk filter "${_filter.label}".',
+                            'Tidak ada transaksi untuk filter yang dipilih.',
                             textAlign: TextAlign.center,
                           ),
                         ),
                       )
                     : RefreshIndicator(
                         onRefresh: () async {
-                          ref.invalidate(transactionsProvider);
-                          await ref.read(transactionsProvider.future);
+                          await _loadFirstPage();
                         },
                         child: ListView.separated(
                           padding: const EdgeInsets.all(16),
-                          itemCount: filtered.length,
+                          controller: _scrollController,
+                          itemCount: items.length + (page.hasMore ? 1 : 0),
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 10),
-                          itemBuilder: (_, index) =>
-                              _TransactionCard(
-                                transaction: filtered[index],
-                                isCollectionMode: widget.isCollectionMode,
-                              ),
+                          itemBuilder: (_, index) {
+                            if (index == items.length) {
+                              return const Padding(
+                                padding: EdgeInsets.all(16),
+                                child:
+                                    Center(child: CircularProgressIndicator()),
+                              );
+                            }
+                            return _TransactionCard(
+                              transaction: items[index],
+                              isCollectionMode: widget.isCollectionMode,
+                            );
+                          },
                         ),
                       ),
               ),
@@ -274,26 +385,37 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       ),
     );
   }
+
+  int _compareTransactions(TransactionEntity first, TransactionEntity second) {
+    final firstCollected =
+        first.resolveLaundryStatusAt(DateTime.now()) == LaundryStatus.collected;
+    final secondCollected = second.resolveLaundryStatusAt(DateTime.now()) ==
+        LaundryStatus.collected;
+    if (firstCollected != secondCollected) {
+      return firstCollected ? 1 : -1;
+    }
+    return second.createdAt.compareTo(first.createdAt);
+  }
 }
 
 class _TransactionFilterSelection {
-  final TransactionListFilter filter;
+  final Set<TransactionListFilter> filters;
   final DateTimeRange? dateRange;
 
   const _TransactionFilterSelection({
-    required this.filter,
+    required this.filters,
     required this.dateRange,
   });
 }
 
 class _TransactionFilterSheet extends StatefulWidget {
   final List<TransactionListFilter> availableFilters;
-  final TransactionListFilter initialFilter;
+  final Set<TransactionListFilter> initialFilters;
   final DateTimeRange? initialDateRange;
 
   const _TransactionFilterSheet({
     required this.availableFilters,
-    required this.initialFilter,
+    required this.initialFilters,
     required this.initialDateRange,
   });
 
@@ -303,14 +425,39 @@ class _TransactionFilterSheet extends StatefulWidget {
 }
 
 class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
-  late TransactionListFilter _filter;
+  late Set<TransactionListFilter> _filters;
   DateTimeRange? _dateRange;
 
   @override
   void initState() {
     super.initState();
-    _filter = widget.initialFilter;
+    _filters = {...widget.initialFilters};
     _dateRange = widget.initialDateRange;
+  }
+
+  void _toggleFilter(TransactionListFilter filter, bool selected) {
+    setState(() {
+      if (filter == TransactionListFilter.all) {
+        _filters = selected
+            ? widget.availableFilters.toSet()
+            : <TransactionListFilter>{};
+        return;
+      }
+
+      _filters.remove(TransactionListFilter.all);
+      if (selected) {
+        _filters.add(filter);
+      } else {
+        _filters.remove(filter);
+      }
+
+      final individualFilters = widget.availableFilters
+          .where((item) => item != TransactionListFilter.all)
+          .toSet();
+      if (_filters.containsAll(individualFilters)) {
+        _filters = widget.availableFilters.toSet();
+      }
+    });
   }
 
   Future<void> _selectDateRange() async {
@@ -332,8 +479,25 @@ class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
     return '${formatter.format(range.start)} - ${formatter.format(range.end)}';
   }
 
+  List<Widget> _filterTiles(Iterable<TransactionListFilter> filters) => filters
+      .where(widget.availableFilters.contains)
+      .map(
+        (filter) => CheckboxListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text(filter.label),
+          value: _filters.contains(filter),
+          onChanged: (selected) => _toggleFilter(filter, selected ?? false),
+        ),
+      )
+      .toList();
+
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) {
+    final maxSheetHeight = MediaQuery.sizeOf(context).height * .82;
+    return SafeArea(
+      child: SizedBox(
+        height: maxSheetHeight,
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             20,
@@ -342,47 +506,61 @@ class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
             20 + MediaQuery.viewInsetsOf(context).bottom,
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Filter transaksi', style: Theme.of(context).textTheme.titleLarge),
+              Text('Filter transaksi',
+                  style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 18),
-              DropdownButtonFormField<TransactionListFilter>(
-                initialValue: _filter,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Status transaksi'),
-                items: widget.availableFilters
-                    .map(
-                      (filter) => DropdownMenuItem(
-                        value: filter,
-                        child: Text(filter.label),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    ..._filterTiles([TransactionListFilter.all]),
+                    const SizedBox(height: 12),
+                    Text('Status laundry',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    ..._filterTiles([
+                      TransactionListFilter.today,
+                      TransactionListFilter.received,
+                      TransactionListFilter.washing,
+                      TransactionListFilter.completed,
+                      TransactionListFilter.late,
+                      TransactionListFilter.notCollected,
+                      TransactionListFilter.collected,
+                    ]),
+                    const SizedBox(height: 12),
+                    Text('Status pembayaran',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    ..._filterTiles([
+                      TransactionListFilter.paid,
+                      TransactionListFilter.unpaid,
+                    ]),
+                    const SizedBox(height: 14),
+                    Text('Periode pembuatan transaksi',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _selectDateRange,
+                      icon: const Icon(Icons.date_range_outlined),
+                      label: Text(_dateRangeLabel,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    if (_dateRange != null)
+                      TextButton.icon(
+                        onPressed: () => setState(() => _dateRange = null),
+                        icon: const Icon(Icons.close_rounded),
+                        label: const Text('Hapus periode tanggal'),
                       ),
-                    )
-                    .toList(),
-                onChanged: (filter) {
-                  if (filter != null) setState(() => _filter = filter);
-                },
-              ),
-              const SizedBox(height: 14),
-              Text('Periode pembuatan transaksi',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _selectDateRange,
-                icon: const Icon(Icons.date_range_outlined),
-                label: Text(_dateRangeLabel, overflow: TextOverflow.ellipsis),
-              ),
-              if (_dateRange != null)
-                TextButton.icon(
-                  onPressed: () => setState(() => _dateRange = null),
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('Hapus periode tanggal'),
+                  ],
                 ),
+              ),
               const SizedBox(height: 10),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(
                   _TransactionFilterSelection(
-                    filter: _filter,
+                    filters: {..._filters},
                     dateRange: _dateRange,
                   ),
                 ),
@@ -391,7 +569,7 @@ class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
               TextButton(
                 onPressed: () => Navigator.of(context).pop(
                   const _TransactionFilterSelection(
-                    filter: TransactionListFilter.all,
+                    filters: <TransactionListFilter>{},
                     dateRange: null,
                   ),
                 ),
@@ -400,7 +578,9 @@ class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _EmptyTransactions extends StatelessWidget {
@@ -550,7 +730,9 @@ class _StatusChip extends StatelessWidget {
 }
 
 class NewTransactionScreen extends ConsumerStatefulWidget {
-  const NewTransactionScreen({super.key});
+  final CustomerEntity? initialCustomer;
+
+  const NewTransactionScreen({this.initialCustomer, super.key});
   @override
   ConsumerState<NewTransactionScreen> createState() =>
       _NewTransactionScreenState();
@@ -566,6 +748,13 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
   PaymentStatus _paymentStatus = PaymentStatus.unpaid;
   bool _express = false;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _customer = widget.initialCustomer;
+  }
+
   @override
   void dispose() {
     _quantity.dispose();
@@ -757,10 +946,11 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
         await ref.read(transactionsProvider.notifier).create(transaction);
     if (!mounted) return;
     result.when(
-      success: (_) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Transaksi berhasil dibuat.')),
+      success: (created) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => TransactionDetailScreen(transaction: created),
+          ),
         );
       },
       error: (failure) {
@@ -1215,6 +1405,20 @@ class _TransactionDetailScreenState
             icon: const Icon(Icons.chat_outlined),
             label: const Text('Hubungi via WhatsApp'),
           ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _transaction.laundryStatus == LaundryStatus.collected
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CollectionSettlementScreen(
+                          transaction: _transaction,
+                        ),
+                      ),
+                    ),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('Ambil / Pelunasan'),
+          ),
         ],
       ),
     );
@@ -1236,20 +1440,12 @@ class _CollectionSettlementScreenState
   final _imagePicker = ImagePicker();
   Uint8List? _proofImage;
   bool _saving = false;
-
-  String get _evidenceKey => 'collection_proof_${widget.transaction.id}';
+  late TransactionEntity _transaction;
 
   @override
   void initState() {
     super.initState();
-    _restoreProofImage();
-  }
-
-  Future<void> _restoreProofImage() async {
-    final preferences = await SharedPreferences.getInstance();
-    final savedImage = preferences.getString(_evidenceKey);
-    if (savedImage == null || !mounted) return;
-    setState(() => _proofImage = base64Decode(savedImage));
+    _transaction = widget.transaction;
   }
 
   Future<void> _takeProofImage() async {
@@ -1261,27 +1457,19 @@ class _CollectionSettlementScreenState
     if (image == null || !mounted) return;
 
     final proof = await image.readAsBytes();
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_evidenceKey, base64Encode(proof));
     if (!mounted) return;
     setState(() => _proofImage = proof);
   }
 
-  Future<void> _completeCollection({required bool settlePayment}) async {
-    if (_proofImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ambil foto bukti pengambilan terlebih dahulu.')),
-      );
-      return;
-    }
-
-    final actionLabel = settlePayment ? 'lunasi dan serahkan' : 'serahkan saja';
+  Future<void> _completeCollection() async {
+    final settlePayment = _transaction.remainingPayment > 0;
+    final actionLabel = settlePayment ? 'lunasi dan serahkan' : 'serahkan';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Konfirmasi pengambilan'),
         content: Text(
-          'Yakin ingin $actionLabel transaksi ${widget.transaction.invoice}?',
+          'Yakin ingin $actionLabel transaksi ${_transaction.invoice}?',
         ),
         actions: [
           TextButton(
@@ -1298,31 +1486,75 @@ class _CollectionSettlementScreenState
     if (confirmed != true || !mounted) return;
 
     setState(() => _saving = true);
-    final paymentStatus = settlePayment
-        ? PaymentStatus.paid
-        : widget.transaction.paymentStatus;
-    final paidAmount = settlePayment
-        ? widget.transaction.total
-        : widget.transaction.paidAmount;
-    final result = await ref.read(transactionsProvider.notifier).updateTransaction(
-          widget.transaction.copyWith(
-            laundryStatus: LaundryStatus.collected,
-            paymentStatus: paymentStatus,
-            paidAmount: paidAmount,
+    final result =
+        await ref.read(transactionsProvider.notifier).collectTransaction(
+              transaction: _transaction,
+              settlePayment: settlePayment,
+              proofImage: _proofImage,
+            );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (result.isSuccess) {
+      await ref.read(transactionsProvider.notifier).refresh();
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            settlePayment
+                ? 'Transaksi telah lunas dan berhasil diambil.'
+                : 'Transaksi berhasil diambil.',
           ),
-        );
+        ),
+      );
+      return;
+    }
+    result.when(
+      success: (_) {},
+      error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failure.message)),
+      ),
+    );
+  }
+
+  Future<void> _settlePayment() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Konfirmasi pelunasan'),
+        content: Text(
+          'Lunasi transaksi ${_transaction.invoice} tanpa mengambil laundry?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Lunasi'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _saving = true);
+    final result =
+        await ref.read(transactionsProvider.notifier).updateTransaction(
+              _transaction.copyWith(
+                paidAmount: _transaction.total,
+                paymentStatus: PaymentStatus.paid,
+              ),
+            );
     if (!mounted) return;
     setState(() => _saving = false);
     result.when(
-      success: (_) {
-        Navigator.pop(context);
+      success: (updated) {
+        setState(() => _transaction = updated);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              settlePayment
-                  ? 'Transaksi telah lunas dan berhasil diambil.'
-                  : 'Transaksi berhasil ditandai sudah diambil.',
-            ),
+          const SnackBar(
+            content: Text('Transaksi telah lunas. Laundry tetap tersimpan.'),
           ),
         );
       },
@@ -1334,10 +1566,12 @@ class _CollectionSettlementScreenState
 
   @override
   Widget build(BuildContext context) {
-    final transaction = widget.transaction;
+    final transaction = _transaction;
     final remaining =
         transaction.remainingPayment.clamp(0, transaction.total).toInt();
     final isCollected = transaction.laundryStatus == LaundryStatus.collected;
+    final canCollect = transaction.laundryStatus == LaundryStatus.completed ||
+        transaction.laundryStatus == LaundryStatus.late;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Pengambilan / Pelunasan')),
@@ -1347,25 +1581,27 @@ class _CollectionSettlementScreenState
           children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: _saving || isCollected
+                onPressed: _saving || isCollected || !canCollect
                     ? null
-                    : () => _completeCollection(settlePayment: false),
-                child: const Text('Ambil Saja'),
+                    : _completeCollection,
+                child: Text(
+                  remaining > 0 ? 'Ambil & Lunasi' : 'Ambil',
+                ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: FilledButton(
-                onPressed: _saving || isCollected
+                onPressed: _saving || isCollected || remaining <= 0
                     ? null
-                    : () => _completeCollection(settlePayment: true),
+                    : _settlePayment,
                 child: _saving
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Lunasi'),
+                    : Text(remaining <= 0 ? 'Sudah Lunas' : 'Lunasi Saja'),
               ),
             ),
           ],
@@ -1374,7 +1610,10 @@ class _CollectionSettlementScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Bukti pengambilan', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Bukti pengambilan (opsional)',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           Card(
             clipBehavior: Clip.antiAlias,
@@ -1410,7 +1649,15 @@ class _CollectionSettlementScreenState
                   ),
           ),
           const SizedBox(height: 20),
-          Text('Kode transaksi', style: Theme.of(context).textTheme.titleMedium),
+          if (!isCollected && !canCollect) ...[
+            const Text(
+              'Laundry belum selesai sehingga belum dapat diserahkan.',
+              style: TextStyle(color: AppColors.warning),
+            ),
+            const SizedBox(height: 20),
+          ],
+          Text('Kode transaksi',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -1418,36 +1665,52 @@ class _CollectionSettlementScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(transaction.invoice, style: Theme.of(context).textTheme.headlineSmall),
+                  Text(transaction.invoice,
+                      style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 4),
                   Text(transaction.customerName),
                   if (transaction.customerPhone.isNotEmpty)
-                    Text(transaction.customerPhone, style: Theme.of(context).textTheme.bodySmall),
+                    Text(transaction.customerPhone,
+                        style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 20),
-          Text('Detail tagihan', style: Theme.of(context).textTheme.titleMedium),
+          Text('Detail tagihan',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  _PriceRow(label: '${transaction.serviceName} (${transaction.quantity} ${transaction.quantityUnit})', value: transaction.total),
+                  _PriceRow(
+                      label:
+                          '${transaction.serviceName} (${transaction.quantity} ${transaction.quantityUnit})',
+                      value: transaction.total),
                   const Divider(height: 20),
                   _PriceRow(label: 'Total tagihan', value: transaction.total),
-                  _PriceRow(label: 'Sudah dibayar', value: transaction.paidAmount),
+                  _PriceRow(
+                      label: 'Sudah dibayar', value: transaction.paidAmount),
                   const Divider(height: 20),
-                  _PriceRow(label: 'Sisa tagihan', value: remaining, emphasis: true),
+                  _PriceRow(
+                      label: 'Sisa tagihan', value: remaining, emphasis: true),
+                  if (remaining <= 0) ...[
+                    const SizedBox(height: 12),
+                    const _StatusChip(
+                      label: 'Sudah Lunas',
+                      color: AppColors.statusSelesai,
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
           if (isCollected) ...[
             const SizedBox(height: 16),
-            const _StatusChip(label: 'Sudah Diambil', color: AppColors.statusSelesai),
+            const _StatusChip(
+                label: 'Sudah Diambil', color: AppColors.statusSelesai),
           ],
         ],
       ),
@@ -1459,48 +1722,315 @@ class _PrintReceiptButton extends ConsumerWidget {
   final TransactionEntity transaction;
   const _PrintReceiptButton({required this.transaction});
   @override
-  Widget build(BuildContext context, WidgetRef ref) =>
-      FloatingActionButton.extended(
-        onPressed: () async {
-          final settings = ref.read(laundrySettingsProvider).valueOrNull;
-          final mac = settings?.defaultPrinter;
-          if (mac == null || mac.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Atur alamat MAC printer terlebih dahulu di Pengaturan.',
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPrinting = ref.watch(receiptPrintingProvider);
+    final isSharing = ref.watch(receiptSharingProvider);
+    final isBusy = isPrinting || isSharing;
+    return FloatingActionButton.extended(
+      onPressed: isBusy ? null : () => _chooseReceiptAction(context, ref),
+      icon: isBusy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.print_outlined),
+      label: Text(isBusy ? 'Memproses...' : 'Cetak Bon'),
+    );
+  }
+
+  Future<void> _chooseReceiptAction(BuildContext context, WidgetRef ref) async {
+    final settings = ref.read(laundrySettingsProvider).valueOrNull;
+    final canPrint = settings?.defaultPrinter?.isNotEmpty ?? false;
+    final canShareWhatsApp = WhatsAppLauncher.hasValidPhone(
+      transaction.customerPhone,
+    );
+    final action = await showModalBottomSheet<_ReceiptAction>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('Bon transaksi'),
+              subtitle: Text('Pilih cara mengirimkan bon kepada pelanggan'),
+            ),
+            ListTile(
+              enabled: canPrint,
+              leading: const Icon(Icons.print_outlined),
+              title: const Text('Print bon'),
+              subtitle: Text(canPrint
+                  ? settings?.defaultPrinterName ?? 'Printer aplikasi'
+                  : 'Pilih printer terlebih dahulu di Pengaturan'),
+              onTap: canPrint
+                  ? () => Navigator.pop(sheetContext, _ReceiptAction.print)
+                  : null,
+            ),
+            ListTile(
+              enabled: canShareWhatsApp,
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Kirim bon ke WhatsApp'),
+              subtitle: Text(canShareWhatsApp
+                  ? 'Bagikan bon dalam bentuk foto'
+                  : 'Nomor WhatsApp pelanggan belum tersedia atau tidak valid'),
+              onTap: canShareWhatsApp
+                  ? () => Navigator.pop(sheetContext, _ReceiptAction.whatsApp)
+                  : null,
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case _ReceiptAction.print:
+        await _printReceipt(
+          context,
+          ref,
+          settings?.defaultPrinter ?? '',
+          settings,
+        );
+        break;
+      case _ReceiptAction.whatsApp:
+        await _shareReceiptImage(context, ref, settings);
+        break;
+    }
+  }
+
+  Future<void> _printReceipt(
+    BuildContext context,
+    WidgetRef ref,
+    String mac,
+    LaundrySettings? settings,
+  ) async {
+    try {
+      await ref.read(printerDeviceServiceProvider).ensureReady();
+    } on PrinterException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+      return;
+    }
+    ref.read(receiptPrintingProvider.notifier).state = true;
+    try {
+      final result = await ref.read(thermalReceiptServiceProvider).print(
+            transaction,
+            macAddress: mac,
+            businessName: settings?.businessName ?? 'CLEAN FRESH LAUNDRY',
+            paperSize: settings?.paperSize ?? '58 mm',
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result
+                ? 'Bon berhasil dikirim ke printer.'
+                : 'Printer tidak dapat dihubungkan. Pastikan printer menyala dan sudah dipasangkan.',
+          ),
+        ),
+      );
+    } on PrinterException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      ref.read(receiptPrintingProvider.notifier).state = false;
+    }
+  }
+
+  Future<void> _shareReceiptImage(
+    BuildContext context,
+    WidgetRef ref,
+    LaundrySettings? settings,
+  ) async {
+    ref.read(receiptSharingProvider.notifier).state = true;
+    try {
+      final image = await ScreenshotController().captureFromWidget(
+        Material(
+          color: Colors.white,
+          child: Center(
+            child: _ReceiptImage(
+              transaction: transaction,
+              businessName: settings?.businessName ?? 'CLEAN FRESH LAUNDRY',
+              businessPhone: settings?.phone ?? '',
+            ),
+          ),
+        ),
+        pixelRatio: 2,
+      );
+      if (!context.mounted) return;
+      final opened = await WhatsAppReceiptLauncher.open(
+        phone: transaction.customerPhone,
+        image: image,
+        filename: 'bon-${transaction.invoice}.png',
+        message:
+            'Halo ${transaction.customerName}, berikut bon laundry ${transaction.invoice}.',
+      );
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'WhatsApp tidak tersedia. Pastikan aplikasi WhatsApp telah terpasang.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Bon gambar gagal dibuat untuk dibagikan.')),
+        );
+      }
+    } finally {
+      ref.read(receiptSharingProvider.notifier).state = false;
+    }
+  }
+}
+
+enum _ReceiptAction { print, whatsApp }
+
+class _ReceiptImage extends StatelessWidget {
+  final TransactionEntity transaction;
+  final String businessName;
+  final String businessPhone;
+
+  const _ReceiptImage({
+    required this.transaction,
+    required this.businessName,
+    required this.businessPhone,
+  });
+
+  static final _currency = NumberFormat.currency(
+    locale: 'id_ID',
+    symbol: 'Rp',
+    decimalDigits: 0,
+  );
+  static final _dateTime = DateFormat('dd MMM yyyy, HH:mm', 'id_ID');
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 420,
+        padding: const EdgeInsets.all(24),
+        color: Colors.white,
+        child: DefaultTextStyle(
+          style: const TextStyle(color: Colors.black87, fontSize: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                businessName,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            );
-            return;
-          }
-          try {
-            await ref.read(printerDeviceServiceProvider).ensureReady();
-          } on PrinterException catch (error) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(error.message)),
-              );
-            }
-            return;
-          }
-          final result = await ref.read(thermalReceiptServiceProvider).print(
-                transaction,
-                macAddress: mac,
-                businessName: settings?.businessName ?? 'CLEAN FRESH LAUNDRY',
-              );
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                result
-                    ? 'Bon berhasil dikirim ke printer.'
-                    : 'Printer tidak dapat dihubungkan.',
+              if (businessPhone.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(businessPhone, textAlign: TextAlign.center),
+              ],
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Divider(color: Colors.black54),
+              ),
+              const Text(
+                'KODE PENGAMBILAN',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Center(child: QrImageView(data: transaction.invoice, size: 150)),
+              const SizedBox(height: 6),
+              Text(
+                transaction.invoice,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Divider(color: Colors.black54),
+              ),
+              _ReceiptLine(label: 'Pelanggan', value: transaction.customerName),
+              _ReceiptLine(
+                label: 'Tanggal masuk',
+                value: _dateTime.format(transaction.createdAt),
+              ),
+              _ReceiptLine(
+                label: 'Estimasi selesai',
+                value: _dateTime.format(transaction.estimatedFinishAt),
+              ),
+              _ReceiptLine(label: 'Layanan', value: transaction.serviceName),
+              _ReceiptLine(
+                label: 'Jumlah',
+                value: '${transaction.quantity} ${transaction.quantityUnit}',
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(color: Colors.black54),
+              ),
+              _ReceiptLine(
+                label: 'Total',
+                value: _currency.format(transaction.total),
+                emphasis: true,
+              ),
+              _ReceiptLine(
+                label: 'Sudah dibayar',
+                value: _currency.format(transaction.paidAmount),
+              ),
+              _ReceiptLine(
+                label: 'Status pembayaran',
+                value: transaction.paymentStatus.label,
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Divider(color: Colors.black54),
+              ),
+              const Text(
+                'Tunjukkan bon ini saat pengambilan laundry.\nTerima kasih.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _ReceiptLine extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool emphasis;
+
+  const _ReceiptLine({
+    required this.label,
+    required this.value,
+    this.emphasis = false,
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Text(label)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: emphasis
+                    ? const TextStyle(fontWeight: FontWeight.bold)
+                    : null,
               ),
             ),
-          );
-        },
-        icon: const Icon(Icons.print_outlined),
-        label: const Text('Cetak Bon'),
+          ],
+        ),
       );
 }

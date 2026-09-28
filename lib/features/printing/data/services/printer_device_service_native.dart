@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
@@ -5,17 +7,23 @@ import '../../domain/entities/printer_device.dart';
 
 class PrinterDeviceService {
   Future<void> ensureReady() async {
-    final permissions = await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-    ].request();
-    final scanGranted =
-        permissions[Permission.bluetoothScan]?.isGranted ?? false;
-    final connectGranted =
-        permissions[Permission.bluetoothConnect]?.isGranted ?? false;
-    if (!scanGranted || !connectGranted) {
+    if (!Platform.isAndroid) {
       throw const PrinterException(
-        'Izin Perangkat di sekitar diperlukan. Aktifkan izin tersebut di pengaturan aplikasi.',
+        'Cetak Bluetooth saat ini hanya didukung pada aplikasi Android.',
+      );
+    }
+
+    // The application only reads *paired* devices and opens an RFCOMM
+    // connection; it does not discover nearby devices. Requiring SCAN here
+    // made printing fail when a user denied an unnecessary permission.
+    var permissionGranted =
+        await PrintBluetoothThermal.isPermissionBluetoothGranted;
+    if (!permissionGranted) {
+      permissionGranted = await Permission.bluetoothConnect.request().isGranted;
+    }
+    if (!permissionGranted) {
+      throw const PrinterException(
+        'Izin perangkat Bluetooth diperlukan. Aktifkan izin "Perangkat di sekitar" di pengaturan aplikasi.',
       );
     }
     if (!await PrintBluetoothThermal.bluetoothEnabled) {

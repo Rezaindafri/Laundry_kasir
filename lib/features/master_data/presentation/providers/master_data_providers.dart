@@ -34,7 +34,15 @@ class CustomersNotifier extends AsyncNotifier<List<CustomerEntity>> {
   Future<List<CustomerEntity>> _load() async {
     final result = await ref.read(masterDataRepositoryProvider).getCustomers();
     return result.when(
-        success: (data) => data, error: (failure) => throw failure);
+      success: (data) {
+        final customers = [...data]
+          ..sort((first, second) => first.name.toLowerCase().compareTo(
+                second.name.toLowerCase(),
+              ));
+        return customers;
+      },
+      error: (failure) => throw failure,
+    );
   }
 
   Future<Result<CustomerEntity>> save(CustomerEntity customer) async {
@@ -48,6 +56,8 @@ class CustomersNotifier extends AsyncNotifier<List<CustomerEntity>> {
             items.add(item);
           else
             items[index] = item;
+          items.sort((first, second) =>
+              first.name.toLowerCase().compareTo(second.name.toLowerCase()));
           state = AsyncData(items);
         },
         error: (_) {});
