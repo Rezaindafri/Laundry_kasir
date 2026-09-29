@@ -26,10 +26,6 @@ class UnauthorizedFailure extends Failure {
       [super.message = 'Sesi berakhir, silakan login kembali.',]);
 }
 
-class ValidationFailure extends Failure {
-  const ValidationFailure(super.message);
-}
-
 class CacheFailure extends Failure {
   const CacheFailure([super.message = 'Gagal mengambil data lokal.']);
 }

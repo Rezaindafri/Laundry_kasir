@@ -57,7 +57,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         user: UserModel.fromJson(userJson),
       );
     } on DioException catch (e) {
-      print('=== DIO ERROR: ${e.response?.data ?? e.message} ===');
       if (e.error is UnauthorizedException) {
         throw const ServerException('Username atau password salah.');
       }
@@ -66,7 +65,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         statusCode: e.response?.statusCode,
       );
     } catch (e) {
-      print('=== ERROR KODE FLUTTER: $e ===');
       throw ServerException('Gagal memproses data: $e');
     }
   }

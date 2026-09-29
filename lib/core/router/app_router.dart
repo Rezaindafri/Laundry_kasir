@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/splash_screen.dart';
+import '../../features/audit/presentation/screens/audit_logs_screen.dart';
 import '../../features/dashboard/presentation/screens/kasir_dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/owner_dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/super_owner_dashboard_screen.dart';
@@ -34,6 +35,7 @@ abstract class AppRoutes {
   static const qrScanner = '/scan-qr';
   static const reports = '/reports';
   static const users = '/users';
+  static const auditLogs = '/audit-logs';
   static const settings = '/settings';
 }
 
@@ -139,6 +141,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: AppRoutes.customers,
+            redirect: (context, state) {
+              final role = ref.read(sessionProvider).valueOrNull?.role;
+              return role == UserRole.owner || role == UserRole.kasir
+                  ? null
+                  : AppRoutes.dashboard;
+            },
             pageBuilder: (context, state) => _tabPage(
               state,
               CustomersScreen(
@@ -149,6 +157,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: AppRoutes.transactions,
+            redirect: (context, state) {
+              final role = ref.read(sessionProvider).valueOrNull?.role;
+              return role == UserRole.owner || role == UserRole.kasir
+                  ? null
+                  : AppRoutes.dashboard;
+            },
             pageBuilder: (context, state) => _tabPage(
               state,
               TransactionsScreen(
@@ -181,20 +195,58 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               const SettingsScreen(),
             ),
           ),
+          GoRoute(
+            path: AppRoutes.users,
+            redirect: (context, state) =>
+                ref.read(sessionProvider).valueOrNull?.role.canManageUsers ==
+                        true
+                    ? null
+                    : AppRoutes.dashboard,
+            pageBuilder: (context, state) {
+              final requestedRole = state.uri.queryParameters['create'];
+              final initialCreateRole = requestedRole == 'owner'
+                  ? UserRole.owner
+                  : requestedRole == 'kasir'
+                      ? UserRole.kasir
+                      : null;
+              return _tabPage(
+                state,
+                UserManagementScreen(initialCreateRole: initialCreateRole),
+              );
+            },
+          ),
         ],
       ),
       GoRoute(
         path: AppRoutes.qrScanner,
+        redirect: (context, state) {
+          final role = ref.read(sessionProvider).valueOrNull?.role;
+          return role == UserRole.owner || role == UserRole.kasir
+              ? null
+              : AppRoutes.dashboard;
+        },
         builder: (context, state) => const QrScannerScreen(),
       ),
       GoRoute(
         path: AppRoutes.collections,
+        redirect: (context, state) {
+          final role = ref.read(sessionProvider).valueOrNull?.role;
+          return role == UserRole.owner || role == UserRole.kasir
+              ? null
+              : AppRoutes.dashboard;
+        },
         builder: (context, state) => const TransactionsScreen(
           isCollectionMode: true,
         ),
       ),
       GoRoute(
         path: AppRoutes.collectionSettlement,
+        redirect: (context, state) {
+          final role = ref.read(sessionProvider).valueOrNull?.role;
+          return role == UserRole.owner || role == UserRole.kasir
+              ? null
+              : AppRoutes.dashboard;
+        },
         builder: (context, state) {
           final transaction = state.extra;
           if (transaction is TransactionEntity) {
@@ -202,14 +254,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
           return const TransactionsScreen(isCollectionMode: true);
         },
-      ),
-      GoRoute(
-        path: AppRoutes.users,
-        redirect: (context, state) =>
-            ref.read(sessionProvider).valueOrNull?.role.canManageUsers == true
-                ? null
-                : AppRoutes.dashboard,
-        builder: (context, state) => const UserManagementScreen(),
       ),
       GoRoute(
         path: AppRoutes.services,
@@ -220,6 +264,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               : AppRoutes.dashboard;
         },
         builder: (context, state) => const LaundryServicesScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.auditLogs,
+        redirect: (context, state) =>
+            ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
+                ? null
+                : AppRoutes.dashboard,
+        builder: (context, state) => const AuditLogsScreen(),
       ),
     ],
   );

@@ -37,7 +37,8 @@ void main() {
       expect(completed.invoice, transaction.invoice);
     });
 
-    test('status otomatis berubah berdasarkan estimasi layanan', () {
+    test('status waktu mengikuti backend dan tidak dihitung ulang di Flutter',
+        () {
       final createdAt = DateTime(2026, 7, 28, 10, 0);
       final estimatedFinishAt = createdAt.add(const Duration(hours: 3));
       final transactionWithEstimate = TransactionEntity(
@@ -63,17 +64,17 @@ void main() {
       expect(
         transactionWithEstimate
             .resolveLaundryStatusAt(createdAt.add(const Duration(hours: 1))),
-        LaundryStatus.washing,
+        LaundryStatus.received,
       );
       expect(
         transactionWithEstimate.resolveLaundryStatusAt(estimatedFinishAt),
-        LaundryStatus.completed,
+        LaundryStatus.received,
       );
       expect(
         transactionWithEstimate.resolveLaundryStatusAt(
           estimatedFinishAt.add(const Duration(hours: 5)),
         ),
-        LaundryStatus.late,
+        LaundryStatus.received,
       );
     });
 

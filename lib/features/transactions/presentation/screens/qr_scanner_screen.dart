@@ -5,9 +5,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../providers/transaction_providers.dart';
-import 'transactions_screen.dart';
 
 class QrScannerScreen extends ConsumerStatefulWidget {
   const QrScannerScreen({super.key});
@@ -63,12 +64,13 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
     if (_handled || _loadingTransaction) return;
     // Receipts encode only the invoice, but accepting the invoice embedded in
     // copied/legacy QR text makes this lookup resilient to scanner formatting.
-    final invoiceMatch = RegExp(r'INV-[A-Z0-9-]+', caseSensitive: false)
-        .firstMatch(invoice);
+    final invoiceMatch =
+        RegExp(r'INV-[A-Z0-9-]+', caseSensitive: false).firstMatch(invoice);
     final normalizedInvoice = (invoiceMatch?.group(0) ?? invoice).trim();
     if (normalizedInvoice.isEmpty) return;
     setState(() => _loadingTransaction = true);
-    final result = await ref.read(transactionRepositoryProvider).getTransactionsPage({
+    final result =
+        await ref.read(transactionRepositoryProvider).getTransactionsPage({
       'invoice': normalizedInvoice,
       'per_page': 1,
     });
@@ -124,46 +126,60 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) context.go(AppRoutes.dashboard);
-        },
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('Scan Kode Pengambilan'),
-            actions: [
-              IconButton(
-                onPressed: _analyzingGallery ? null : _scanFromGallery,
-                tooltip: 'Pilih gambar dari galeri',
-                icon: _analyzingGallery
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.photo_library_outlined),
-              ),
-            ],
-          ),
-          body: Stack(children: [
-          MobileScanner(onDetect: _onDetect),
-          Center(
+  Widget build(BuildContext context) {
+    final user = ref.watch(sessionProvider).valueOrNull;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) context.go(AppRoutes.dashboard);
+      },
+      child: Scaffold(
+        drawer: user == null ? null : AppNavigationDrawer(user: user),
+        appBar: AppBar(
+          title: const Text('Scan Kode Pengambilan'),
+          actions: [
+            IconButton(
+              onPressed: _analyzingGallery ? null : _scanFromGallery,
+              tooltip: 'Pilih gambar dari galeri',
+              icon: _analyzingGallery
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.photo_library_outlined),
+            ),
+          ],
+        ),
+        body: Stack(
+          children: [
+            MobileScanner(onDetect: _onDetect),
+            Center(
               child: Container(
-                  width: 230,
-                  height: 230,
-                  decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white, width: 3),
-                      borderRadius: BorderRadius.circular(20),),),),
-          const Positioned(
+                width: 230,
+                height: 230,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 3),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+            const Positioned(
               left: 24,
               right: 24,
               bottom: 44,
-              child: Text('Arahkan kamera ke QR pada bon laundry.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600,),),),
-          ],),
+              child: Text(
+                'Arahkan kamera ke QR pada bon laundry.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }

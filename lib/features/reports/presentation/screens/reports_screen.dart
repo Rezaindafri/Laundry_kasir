@@ -5,6 +5,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../data/models/report_models.dart';
 import '../providers/report_providers.dart';
 
@@ -27,11 +29,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final overview = ref.watch(reportsOverviewProvider);
+    final user = ref.watch(sessionProvider).valueOrNull;
 
     return Scaffold(
+      drawer: user == null ? null : AppNavigationDrawer(user: user),
       appBar: AppBar(
         title: const Text('Laporan'),
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: true,
       ),
       body: overview.when(
         loading: () => const Center(child: CircularProgressIndicator()),

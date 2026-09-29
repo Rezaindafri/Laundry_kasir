@@ -3,6 +3,7 @@
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/utils/result.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/transaction_remote_datasource.dart';
 import '../../data/repositories/mock_transaction_repository.dart';
 import '../../data/repositories/transaction_repository_impl.dart';
@@ -27,6 +28,7 @@ final transactionsProvider =
 class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
   @override
   Future<List<TransactionEntity>> build() async {
+    ref.watch(currentSessionUserIdProvider);
     final result =
         await ref.read(transactionRepositoryProvider).getTransactions();
     return result.when(

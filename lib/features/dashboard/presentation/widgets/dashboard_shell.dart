@@ -22,153 +22,15 @@ class DashboardShell extends ConsumerWidget {
     super.key,
   });
 
-  List<_BottomNavItem> _navItems() {
-    switch (user.role) {
-      case UserRole.kasir:
-        return const [
-          _BottomNavItem(
-            'Beranda',
-            Icons.home_outlined,
-            Icons.home_rounded,
-            AppRoutes.dashboard,
-          ),
-          _BottomNavItem(
-            'Transaksi',
-            Icons.receipt_long_outlined,
-            Icons.receipt_long_rounded,
-            AppRoutes.transactions,
-          ),
-          _BottomNavItem(
-            'Scan QR',
-            Icons.qr_code_scanner_outlined,
-            Icons.qr_code_scanner_rounded,
-            AppRoutes.qrScanner,
-          ),
-          _BottomNavItem(
-            'Pelanggan',
-            Icons.people_outline,
-            Icons.people_rounded,
-            AppRoutes.customers,
-          ),
-          _BottomNavItem(
-            'Setting',
-            Icons.settings_outlined,
-            Icons.settings_rounded,
-            AppRoutes.settings,
-          ),
-        ];
-      case UserRole.owner:
-      case UserRole.superOwner:
-        return const [
-          _BottomNavItem(
-            'Beranda',
-            Icons.home_outlined,
-            Icons.home_rounded,
-            AppRoutes.dashboard,
-          ),
-          _BottomNavItem(
-            'Transaksi',
-            Icons.receipt_long_outlined,
-            Icons.receipt_long_rounded,
-            AppRoutes.transactions,
-          ),
-          _BottomNavItem(
-            'Scan QR',
-            Icons.qr_code_scanner_outlined,
-            Icons.qr_code_scanner_rounded,
-            AppRoutes.qrScanner,
-          ),
-          _BottomNavItem(
-            'Laporan',
-            Icons.bar_chart_outlined,
-            Icons.bar_chart_rounded,
-            AppRoutes.reports,
-          ),
-          _BottomNavItem(
-            'Setting',
-            Icons.settings_outlined,
-            Icons.settings_rounded,
-            AppRoutes.settings,
-          ),
-        ];
-    }
-  }
-
-  int _selectedIndex(BuildContext context) {
-    final location = GoRouter.of(context).state.matchedLocation;
-    final items = _navItems();
-
-    final index = items.indexWhere((item) => item.route == location);
-    if (index != -1) return index;
-
-    if (location == AppRoutes.dashboard) return 0;
-    if (location.startsWith(AppRoutes.transactions)) return 1;
-    if (location == AppRoutes.qrScanner) return 2;
-    if (location == AppRoutes.customers) return 3;
-    if (location == AppRoutes.reports) return 3;
-    if (location == AppRoutes.settings) return 4;
-
-    return 0;
-  }
-
-  void _onItemTapped(BuildContext context, String route) {
-    if (GoRouter.of(context).state.matchedLocation != route) {
-      if (route == AppRoutes.qrScanner) {
-        context.push(route);
-      } else {
-        final targetIndex = _navItems().indexWhere((item) => item.route == route);
-        context.pushReplacement(
-          route,
-          extra: AppTabTransition(
-            movesLeft: targetIndex > _selectedIndex(context),
-          ),
-        );
-      }
-    }
-  }
-
-  void _confirmLogout(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Keluar Aplikasi'),
-        content: const Text('Apakah Anda yakin ingin keluar?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              ref.read(sessionProvider.notifier).logout();
-            },
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Keluar'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-        appBar: AppBar(
-          title: Text(title, style: AppTextStyles.title),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.logout_rounded),
-              tooltip: 'Keluar',
-              onPressed: () => _confirmLogout(context, ref),
-            ),
-            const SizedBox(width: 8),
-          ],
-        ),
-        drawer: _AppDrawer(user: user),
-        body: body,
+      appBar: AppBar(
+        title: Text(title, style: AppTextStyles.title),
+        centerTitle: true,
+      ),
+      drawer: AppNavigationDrawer(user: user),
+      body: body,
     );
   }
 }
@@ -243,21 +105,39 @@ class AppBottomNavigation extends StatelessWidget {
     switch (user.role) {
       case UserRole.kasir:
         return const [
-            _BottomNavItem('Beranda', Icons.home_outlined, Icons.home_rounded, AppRoutes.dashboard),
-            _BottomNavItem('Transaksi', Icons.receipt_long_outlined, Icons.receipt_long_rounded, AppRoutes.transactions),
-            _BottomNavItem('Scan QR', Icons.qr_code_scanner_outlined, Icons.qr_code_scanner_rounded, AppRoutes.qrScanner),
-            _BottomNavItem('Pelanggan', Icons.people_outline, Icons.people_rounded, AppRoutes.customers),
-            _BottomNavItem('Setting', Icons.settings_outlined, Icons.settings_rounded, AppRoutes.settings),
-          ];
+          _BottomNavItem('Beranda', Icons.home_outlined, Icons.home_rounded,
+              AppRoutes.dashboard),
+          _BottomNavItem('Transaksi', Icons.receipt_long_outlined,
+              Icons.receipt_long_rounded, AppRoutes.transactions),
+          _BottomNavItem('Scan QR', Icons.qr_code_scanner_outlined,
+              Icons.qr_code_scanner_rounded, AppRoutes.qrScanner),
+          _BottomNavItem('Pelanggan', Icons.people_outline,
+              Icons.people_rounded, AppRoutes.customers),
+          _BottomNavItem('Setting', Icons.settings_outlined,
+              Icons.settings_rounded, AppRoutes.settings),
+        ];
       case UserRole.owner:
+        return const [
+          _BottomNavItem('Beranda', Icons.home_outlined, Icons.home_rounded,
+              AppRoutes.dashboard),
+          _BottomNavItem('Transaksi', Icons.receipt_long_outlined,
+              Icons.receipt_long_rounded, AppRoutes.transactions),
+          _BottomNavItem('Scan QR', Icons.qr_code_scanner_outlined,
+              Icons.qr_code_scanner_rounded, AppRoutes.qrScanner),
+          _BottomNavItem('Laporan', Icons.bar_chart_outlined,
+              Icons.bar_chart_rounded, AppRoutes.reports),
+          _BottomNavItem('Setting', Icons.settings_outlined,
+              Icons.settings_rounded, AppRoutes.settings),
+        ];
       case UserRole.superOwner:
         return const [
-            _BottomNavItem('Beranda', Icons.home_outlined, Icons.home_rounded, AppRoutes.dashboard),
-            _BottomNavItem('Transaksi', Icons.receipt_long_outlined, Icons.receipt_long_rounded, AppRoutes.transactions),
-            _BottomNavItem('Scan QR', Icons.qr_code_scanner_outlined, Icons.qr_code_scanner_rounded, AppRoutes.qrScanner),
-            _BottomNavItem('Laporan', Icons.bar_chart_outlined, Icons.bar_chart_rounded, AppRoutes.reports),
-            _BottomNavItem('Setting', Icons.settings_outlined, Icons.settings_rounded, AppRoutes.settings),
-          ];
+          _BottomNavItem('Beranda', Icons.home_outlined, Icons.home_rounded,
+              AppRoutes.dashboard),
+          _BottomNavItem('Akun', Icons.manage_accounts_outlined,
+              Icons.manage_accounts_rounded, AppRoutes.users),
+          _BottomNavItem('Setting', Icons.settings_outlined,
+              Icons.settings_rounded, AppRoutes.settings),
+        ];
     }
   }
 
@@ -301,7 +181,7 @@ class AppBottomNavigation extends StatelessWidget {
               final item = _items[index];
               final isSelected = index == selectedIndex;
               return Expanded(
-                child: index == 2
+                child: item.route == AppRoutes.qrScanner
                     ? _QrNavigationItem(
                         item: item,
                         isSelected: isSelected,
@@ -343,14 +223,16 @@ class _NavigationItem extends StatelessWidget {
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                 decoration: BoxDecoration(
                   color: isSelected ? AppColors.secondary : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   isSelected ? item.activeIcon : item.icon,
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                  color:
+                      isSelected ? AppColors.primary : AppColors.textSecondary,
                   size: 23,
                 ),
               ),
@@ -360,7 +242,8 @@ class _NavigationItem extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.label.copyWith(
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                  color:
+                      isSelected ? AppColors.primary : AppColors.textSecondary,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   letterSpacing: 0,
                 ),
@@ -402,50 +285,50 @@ class _QrNavigationItem extends StatelessWidget {
       );
 }
 
-class _AppDrawer extends StatelessWidget {
+/// Drawer yang dipakai bersama oleh seluruh halaman utama dalam navigation.
+class AppNavigationDrawer extends StatelessWidget {
   final UserEntity user;
 
-  const _AppDrawer({required this.user});
+  const AppNavigationDrawer({required this.user, super.key});
 
   @override
   Widget build(BuildContext context) {
     final role = user.role;
-    final menuItems = <_MenuItem>[
-      const _MenuItem('Dashboard', Icons.dashboard_outlined, AppRoutes.dashboard),
-      const _MenuItem(
-        'Transaksi',
-        Icons.point_of_sale_outlined,
-        AppRoutes.transactions,
-      ),
-      const _MenuItem('Pelanggan', Icons.people_outline, AppRoutes.customers),
-      if (role.canManageServicePrice)
-        const _MenuItem(
-          'Layanan Laundry',
-          Icons.local_laundry_service_outlined,
-          AppRoutes.services,
-        ),
-      const _MenuItem(
-        'Scan QR',
-        Icons.qr_code_scanner_outlined,
-        AppRoutes.qrScanner,
-      ),
-      const _MenuItem(
-        'Riwayat Transaksi',
-        Icons.history_outlined,
-        AppRoutes.transactions,
-      ),
-      if (role.canViewProfitReports)
-        const _MenuItem('Laporan', Icons.bar_chart_outlined, AppRoutes.reports),
-      if (role.canManageUsers)
-        const _MenuItem(
-          'Manajemen User',
-          Icons.manage_accounts_outlined,
-          AppRoutes.users,
-        ),
-      if (role.canBackupRestore)
-        const _MenuItem('Backup / Restore', Icons.backup_outlined),
-      const _MenuItem('Pengaturan', Icons.settings_outlined, AppRoutes.settings),
-    ];
+    final menuItems = role == UserRole.superOwner
+        ? const <_MenuItem>[
+            _MenuItem(
+                'Struktur Akun', Icons.dashboard_outlined, AppRoutes.dashboard),
+            _MenuItem(
+                'Kelola Akun', Icons.manage_accounts_outlined, AppRoutes.users),
+            _MenuItem(
+                'Pengaturan', Icons.settings_outlined, AppRoutes.settings),
+          ]
+        : <_MenuItem>[
+            const _MenuItem(
+                'Dashboard', Icons.dashboard_outlined, AppRoutes.dashboard),
+            const _MenuItem('Transaksi', Icons.point_of_sale_outlined,
+                AppRoutes.transactions),
+            const _MenuItem(
+                'Pelanggan', Icons.people_outline, AppRoutes.customers),
+            if (role.canManageServicePrice)
+              const _MenuItem('Layanan Laundry',
+                  Icons.local_laundry_service_outlined, AppRoutes.services),
+            const _MenuItem(
+                'Scan QR', Icons.qr_code_scanner_outlined, AppRoutes.qrScanner),
+            const _MenuItem('Riwayat Transaksi', Icons.history_outlined,
+                AppRoutes.transactions),
+            if (role.canViewProfitReports)
+              const _MenuItem(
+                  'Laporan', Icons.bar_chart_outlined, AppRoutes.reports),
+            if (role == UserRole.owner)
+              const _MenuItem('Riwayat Audit', Icons.history_edu_outlined,
+                  AppRoutes.auditLogs),
+            if (role.canManageUsers)
+              const _MenuItem('Manajemen User', Icons.manage_accounts_outlined,
+                  AppRoutes.users),
+            const _MenuItem(
+                'Pengaturan', Icons.settings_outlined, AppRoutes.settings),
+          ];
 
     return Drawer(
       child: SafeArea(
@@ -462,7 +345,8 @@ class _AppDrawer extends StatelessWidget {
                     foregroundColor: AppColors.primary,
                     child: Text(
                       user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                      style: AppTextStyles.title.copyWith(color: AppColors.primary),
+                      style: AppTextStyles.title
+                          .copyWith(color: AppColors.primary),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -470,7 +354,8 @@ class _AppDrawer extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user.name, style: AppTextStyles.title, maxLines: 1),
+                        Text(user.name,
+                            style: AppTextStyles.title, maxLines: 1),
                         Text(role.label, style: AppTextStyles.bodyMuted),
                       ],
                     ),
@@ -482,21 +367,24 @@ class _AppDrawer extends StatelessWidget {
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
-                children: menuItems.map((item) => ListTile(
-                  leading: Icon(item.icon, color: AppColors.textSecondary),
-                  title: Text(item.label, style: AppTextStyles.body),
-                  enabled: item.route != null,
-                  onTap: item.route == null
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          if (item.route == AppRoutes.dashboard) {
-                            context.go(item.route!);
-                          } else {
-                            context.push(item.route!);
-                          }
-                        },
-                )).toList(),
+                children: menuItems
+                    .map((item) => ListTile(
+                          leading:
+                              Icon(item.icon, color: AppColors.textSecondary),
+                          title: Text(item.label, style: AppTextStyles.body),
+                          enabled: item.route != null,
+                          onTap: item.route == null
+                              ? null
+                              : () {
+                                  Navigator.of(context).pop();
+                                  if (item.route == AppRoutes.dashboard) {
+                                    context.go(item.route!);
+                                  } else {
+                                    context.push(item.route!);
+                                  }
+                                },
+                        ))
+                    .toList(),
               ),
             ),
           ],

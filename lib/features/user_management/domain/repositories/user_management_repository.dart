@@ -3,5 +3,6 @@ import '../../../auth/domain/entities/user_entity.dart';
 
 abstract class UserManagementRepository {
   Future<Result<List<UserEntity>>> getUsers();
-  Future<Result<UserEntity>> saveUser(UserEntity user);
+  Future<Result<UserEntity>> saveUser(UserEntity user, {String? password});
+  Future<Result<UserEntity>> toggleUserStatus(String id);
 }

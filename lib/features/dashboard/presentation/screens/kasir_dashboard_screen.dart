@@ -719,18 +719,6 @@ extension _StatusDetails on _Status {
   }
 }
 
-class _CollectBackground extends StatelessWidget {
-  const _CollectBackground();
-  @override
-  Widget build(BuildContext context) => Container(
-        color: AppColors.statusSelesai,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        child:
-            const Icon(Icons.assignment_turned_in_rounded, color: Colors.white),
-      );
-}
-
 class _EmptyQueue extends StatelessWidget {
   const _EmptyQueue();
   @override

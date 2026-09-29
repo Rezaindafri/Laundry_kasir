@@ -7,6 +7,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../../../shared/enums/user_role.dart';
 
 import 'customer_search_delegate.dart';
@@ -61,8 +62,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final isKasir = currentRole == UserRole.kasir;
 
     return Scaffold(
+      drawer: user == null ? null : AppNavigationDrawer(user: user),
       appBar: AppBar(
-          automaticallyImplyLeading: false,
+          automaticallyImplyLeading: true,
           title: const Text('Pelanggan'),
           actions: [
             IconButton(
@@ -151,7 +153,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     if (saved.isSuccess) {
       await ref.read(customersProvider.notifier).refresh();
     }
-    if (mounted) _showResult(context, saved);
+    if (mounted) _showResult(context, saved, 'Data pelanggan berhasil disimpan.');
   }
 
   Future<void> _confirmDelete(
@@ -172,13 +174,16 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     if (confirmed == true) {
       final result =
           await ref.read(customersProvider.notifier).delete(customer.id);
-      if (context.mounted) _showResult(context, result);
+      if (context.mounted) {
+        _showResult(context, result, 'Data pelanggan berhasil dihapus.');
+      }
     }
   }
 
-  void _showResult(BuildContext context, dynamic result) => result.when(
-      success: (_) => ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data pelanggan berhasil disimpan.'))),
+  void _showResult(BuildContext context, dynamic result, String successMessage) =>
+      result.when(
+      success: (_) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(successMessage))),
       error: (Failure failure) => ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(failure.message))));
 }

@@ -29,7 +29,7 @@ class OwnerDashboardScreen extends ConsumerStatefulWidget {
 
 class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
   _RevenuePeriod _selectedPeriod = _RevenuePeriod.week;
-  String _selectedAccount = 'Keseluruhan';
+  String _selectedAccountId = 'all';
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +45,9 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     );
 
     final effectiveTransactions =
-        _filterByAccount(transactions, _selectedAccount);
+        _filterByAccount(transactions, _selectedAccountId);
     final effectiveCustomers = _filterCustomersByAccount(
-        customers, _selectedAccount, effectiveTransactions);
+        customers, _selectedAccountId, effectiveTransactions);
 
     final dashboardSummary = dashboard?.summary != null
         ? _buildDashboardSummaryFromApi(dashboard!.summary, currency)
@@ -65,12 +65,27 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 item.value.toDouble()))
             .toList()
         : _buildRevenueSeries(effectiveTransactions, now, _selectedPeriod);
-    final serviceDistribution = _serviceDistribution(effectiveTransactions);
-    final operationalStats = _operationalStats(effectiveTransactions, now);
-    final attentionItems =
-        _attentionItems(effectiveTransactions, now, currency);
-    final popularServices = _popularServices(effectiveTransactions);
-    final accountOptions = dashboard?.accountOptions ?? _availableAccounts();
+    final serviceDistribution = dashboard == null
+        ? _serviceDistribution(effectiveTransactions)
+        : _serverDistribution(dashboard.insights);
+    final operationalStats = dashboard == null
+        ? _operationalStats(effectiveTransactions, now)
+        : _serverMonitoring(dashboard.insights);
+    final attentionItems = dashboard == null
+        ? _attentionItems(effectiveTransactions, now, currency)
+        : _serverAttention(dashboard.insights);
+    final popularServices = dashboard == null
+        ? _popularServices(effectiveTransactions)
+        : _serverPopularServices(dashboard.insights);
+    final activeCustomerCount = dashboard == null
+        ? _activeCustomers(effectiveTransactions).length
+        : (dashboard.insights['active_customers'] as num?)?.toInt() ?? 0;
+    final customerNames = dashboard == null
+        ? effectiveCustomers.map((customer) => customer.name).take(3).toList()
+        : (dashboard.insights['customer_names'] as List<dynamic>? ?? const [])
+            .map((item) => item.toString())
+            .toList();
+    final accounts = dashboard?.accounts ?? const <DashboardOwnerAccount>[];
 
     if (dashboardState.isLoading) {
       return DashboardShell(
@@ -107,8 +122,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
       title: 'Dashboard Owner',
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(ownerDashboardProvider);
-          await ref.read(ownerDashboardProvider.future);
+          await ref.read(ownerDashboardProvider.notifier).refresh();
           ref.invalidate(transactionsProvider);
           await ref.read(transactionsProvider.future);
           ref.invalidate(customersProvider);
@@ -123,8 +137,12 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: _FilterChipButton(
-                    label: _selectedAccount,
-                    onTap: () => _showFilterSheet(context, accountOptions),
+                    label: _selectedAccountLabel(accounts),
+                    onTap: () => _showFilterSheet(
+                      context,
+                      accounts,
+                      dashboard,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -157,7 +175,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                           GoRouter.of(context).push(AppRoutes.customers),
                     ),
                     _KpiCard(
-                      label: 'Belum Diambil',
+                      label: 'Diproses',
                       value: dashboardSummary.processing.toString(),
                       trend: dashboardSummary.processingTrend,
                       onTap: () =>
@@ -182,8 +200,10 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                         children: _RevenuePeriod.values.map((period) {
                           final selected = period == _selectedPeriod;
                           return InkWell(
-                            onTap: () =>
-                                setState(() => _selectedPeriod = period),
+                            onTap: () => _applyServerFilters(
+                              period: period,
+                              dashboard: dashboard,
+                            ),
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
@@ -259,7 +279,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${_activeCustomers(effectiveTransactions).length}',
+                        '$activeCustomerCount',
                         style: AppTextStyles.headline.copyWith(fontSize: 30),
                       ),
                       const SizedBox(height: 6),
@@ -268,11 +288,11 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                         style: AppTextStyles.bodyMuted,
                       ),
                       const SizedBox(height: 12),
-                      if (effectiveCustomers.isEmpty)
+                      if (customerNames.isEmpty)
                         Text('Belum ada data pelanggan',
                             style: AppTextStyles.bodyMuted)
                       else ...[
-                        for (final customer in effectiveCustomers.take(3))
+                        for (final customer in customerNames)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Row(
@@ -286,8 +306,8 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                                   ),
                                   child: Center(
                                     child: Text(
-                                      customer.name.trim().isNotEmpty
-                                          ? customer.name[0].toUpperCase()
+                                      customer.trim().isNotEmpty
+                                          ? customer[0].toUpperCase()
                                           : '?',
                                       style: AppTextStyles.label.copyWith(
                                         color: AppColors.primary,
@@ -299,7 +319,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    customer.name,
+                                    customer,
                                     style: AppTextStyles.body,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -320,7 +340,10 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
   }
 
   Future<void> _showFilterSheet(
-      BuildContext context, List<String> accounts) async {
+    BuildContext context,
+    List<DashboardOwnerAccount> accounts,
+    DashboardOwnerResponse? dashboard,
+  ) async {
     final result = await showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -338,23 +361,31 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Keseluruhan'),
+                  leading: Radio<String>(
+                    value: 'all',
+                    groupValue: _selectedAccountId,
+                    onChanged: (value) {
+                      if (value != null) Navigator.pop(sheetContext, value);
+                    },
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, 'all'),
+                ),
                 ...accounts.map((account) => ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: Text(account),
+                      title: Text(account.label),
                       leading: Radio<String>(
-                        value: account,
-                        groupValue: _selectedAccount,
+                        value: account.id,
+                        groupValue: _selectedAccountId,
                         onChanged: (value) {
                           if (value != null) {
-                            setState(() => _selectedAccount = value);
                             Navigator.pop(sheetContext, value);
                           }
                         },
                       ),
-                      onTap: () {
-                        setState(() => _selectedAccount = account);
-                        Navigator.pop(sheetContext, account);
-                      },
+                      onTap: () => Navigator.pop(sheetContext, account.id),
                     )),
               ],
             ),
@@ -364,13 +395,30 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     );
 
     if (result != null) {
-      setState(() => _selectedAccount = result);
+      setState(() => _selectedAccountId = result);
+      await _applyServerFilters(dashboard: dashboard);
     }
   }
-}
 
-List<String> _availableAccounts() {
-  return const ['Keseluruhan', 'Kasir 1'];
+  Future<void> _applyServerFilters({
+    _RevenuePeriod? period,
+    DashboardOwnerResponse? dashboard,
+  }) async {
+    final selectedPeriod = period ?? _selectedPeriod;
+    if (period != null) setState(() => _selectedPeriod = period);
+    final cashierId = _selectedAccountId == 'all' ? null : _selectedAccountId;
+    await ref.read(ownerDashboardProvider.notifier).applyFilters(
+          period: selectedPeriod.apiValue,
+          cashierId: cashierId,
+        );
+  }
+
+  String _selectedAccountLabel(List<DashboardOwnerAccount> accounts) {
+    for (final account in accounts) {
+      if (account.id == _selectedAccountId) return account.label;
+    }
+    return 'Keseluruhan';
+  }
 }
 
 enum _RevenuePeriod {
@@ -388,6 +436,8 @@ enum _RevenuePeriod {
         return 'Tahun';
     }
   }
+
+  String get apiValue => name;
 }
 
 class _DashboardSummary {
@@ -1261,8 +1311,7 @@ int _processingCount(List<TransactionEntity> items, DateTime now) {
 int _readyForPickup(List<TransactionEntity> items, DateTime now) {
   return items.where((item) {
     final status = item.resolveLaundryStatusAt(now);
-    return status == LaundryStatus.completed ||
-        status == LaundryStatus.collected;
+    return status == LaundryStatus.completed || status == LaundryStatus.late;
   }).length;
 }
 
@@ -1290,6 +1339,82 @@ List<_DistributionItem> _serviceDistribution(List<TransactionEntity> items) {
       .entries
       .map((entry) => _DistributionItem(entry.value.key, entry.value.value,
           colors[entry.key % colors.length]))
+      .toList();
+}
+
+List<_DistributionItem> _serverDistribution(Map<String, dynamic> insights) {
+  final rows = insights['service_distribution'] as List<dynamic>? ?? const [];
+  final colors = [
+    AppColors.primary,
+    AppColors.statusSelesai,
+    AppColors.statusDicuci,
+    AppColors.warning,
+  ];
+  return rows.whereType<Map>().toList().asMap().entries.map((entry) {
+    final row = entry.value;
+    return _DistributionItem(
+      row['label']?.toString() ?? 'Layanan',
+      (row['count'] as num?)?.toInt() ?? 0,
+      colors[entry.key % colors.length],
+    );
+  }).toList();
+}
+
+List<_MonitoringItem> _serverMonitoring(Map<String, dynamic> insights) {
+  final monitoring = Map<String, dynamic>.from(
+    insights['monitoring'] as Map? ?? const {},
+  );
+  int count(String key) => (monitoring[key] as num?)?.toInt() ?? 0;
+  return [
+    _MonitoringItem('Diproses', count('processing'),
+        Icons.local_laundry_service_outlined, AppColors.statusDicuci),
+    _MonitoringItem('Mendekati Deadline', count('due_soon'),
+        Icons.timelapse_rounded, AppColors.statusDikeringkan),
+    _MonitoringItem('Terlambat', count('late'), Icons.warning_amber_rounded,
+        AppColors.error),
+    _MonitoringItem('Siap Diambil', count('ready_to_pickup'),
+        Icons.check_circle_outline_rounded, AppColors.success),
+  ];
+}
+
+List<_AttentionItem> _serverAttention(Map<String, dynamic> insights) {
+  final monitoring = Map<String, dynamic>.from(
+    insights['monitoring'] as Map? ?? const {},
+  );
+  int count(String key) => (monitoring[key] as num?)?.toInt() ?? 0;
+  final alerts = <_AttentionItem>[];
+  if (count('late') > 0) {
+    alerts.add(_AttentionItem(
+        'Transaksi terlambat',
+        '${count('late')} transaksi perlu ditangani',
+        AppColors.error,
+        Icons.warning_amber_rounded));
+  }
+  if (count('due_soon') > 0) {
+    alerts.add(_AttentionItem(
+        'Mendekati deadline',
+        '${count('due_soon')} transaksi segera selesai',
+        AppColors.warning,
+        Icons.schedule_rounded));
+  }
+  if (count('ready_to_pickup') > 0) {
+    alerts.add(_AttentionItem(
+        'Menunggu pengambilan',
+        '${count('ready_to_pickup')} transaksi siap diambil',
+        AppColors.info,
+        Icons.inventory_2_outlined));
+  }
+  return alerts;
+}
+
+List<_InsightItem> _serverPopularServices(Map<String, dynamic> insights) {
+  final rows = insights['popular_services'] as List<dynamic>? ?? const [];
+  return rows
+      .whereType<Map>()
+      .map((row) => _InsightItem(
+            row['label']?.toString() ?? 'Layanan',
+            '${(row['count'] as num?)?.toInt() ?? 0}x',
+          ))
       .toList();
 }
 

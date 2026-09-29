@@ -16,7 +16,8 @@ import '../../domain/usecases/logout_usecase.dart';
 /// Harus di-override di main() dengan instance SharedPreferences.getInstance()
 /// sebelum runApp, karena inisialisasinya async.
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('sharedPreferencesProvider belum di-override di main.dart');
+  throw UnimplementedError(
+      'sharedPreferencesProvider belum di-override di main.dart');
 });
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
@@ -63,6 +64,22 @@ final getCurrentUserUseCaseProvider = Provider((ref) {
 final sessionProvider =
     AsyncNotifierProvider<SessionNotifier, UserEntity?>(SessionNotifier.new);
 
+/// Identity sesi aktif untuk provider yang memuat data terisolasi per akun.
+/// Saat login berganti, provider yang mengawasi nilai ini akan memuat ulang
+/// data dari backend dan tidak boleh menampilkan cache akun sebelumnya.
+final currentSessionUserIdProvider = Provider<String?>(
+  (ref) => ref.watch(sessionProvider).valueOrNull?.id,
+);
+
+/// Key cache konfigurasi usaha: kasir berbagi cache dengan Owner yang menjadi
+/// kelompok operasionalnya, sedangkan antar Owner tetap terpisah.
+final currentOperationalOwnerScopeIdProvider = Provider<String?>(
+  (ref) {
+    final user = ref.watch(sessionProvider).valueOrNull;
+    return user?.ownerId ?? user?.id;
+  },
+);
+
 class SessionNotifier extends AsyncNotifier<UserEntity?> {
   @override
   Future<UserEntity?> build() async {
@@ -96,5 +113,9 @@ class SessionNotifier extends AsyncNotifier<UserEntity?> {
   Future<void> logout() async {
     await ref.read(logoutUseCaseProvider).call();
     state = const AsyncData(null);
+  }
+
+  Future<void> replaceCurrentUser(UserEntity user) async {
+    state = AsyncData(user);
   }
 }

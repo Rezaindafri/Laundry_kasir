@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/dio_client.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/report_remote_datasource.dart';
 import '../../data/models/report_models.dart';
 
@@ -20,7 +21,10 @@ class ReportsOverviewNotifier extends AsyncNotifier<ReportsOverview> {
       ref.read(reportRemoteDataSourceProvider);
 
   @override
-  Future<ReportsOverview> build() => _load();
+  Future<ReportsOverview> build() {
+    ref.watch(currentSessionUserIdProvider);
+    return _load();
+  }
 
   Future<void> refresh() async {
     state = const AsyncLoading();

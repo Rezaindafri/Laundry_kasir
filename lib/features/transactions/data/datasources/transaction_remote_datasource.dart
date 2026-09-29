@@ -1,4 +1,4 @@
-﻿import 'package:dio/dio.dart';
+import 'package:dio/dio.dart';
 
 import 'dart:typed_data';
 
@@ -10,8 +10,10 @@ import '../models/transaction_page_model.dart';
 abstract class TransactionRemoteDataSource {
   Future<List<TransactionModel>> getTransactions();
   Future<TransactionPageModel> getTransactionsPage(Map<String, dynamic> query);
-  Future<TransactionModel> createTransaction({required TransactionModel transaction});
-  Future<TransactionModel> updateTransaction({required TransactionModel transaction});
+  Future<TransactionModel> createTransaction(
+      {required TransactionModel transaction});
+  Future<TransactionModel> updateTransaction(
+      {required TransactionModel transaction});
   Future<TransactionModel> collectTransaction({
     required TransactionModel transaction,
     required bool settlePayment,
@@ -38,11 +40,13 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
           : (response.data as List<dynamic>? ?? const []);
 
       return data
-          .map((item) => TransactionModel.fromJson(item as Map<String, dynamic>))
+          .map(
+              (item) => TransactionModel.fromJson(item as Map<String, dynamic>))
           .toList();
     } on DioException catch (error) {
       throw ServerException(
-        error.response?.data?['message']?.toString() ?? 'Gagal mengambil riwayat transaksi.',
+        error.response?.data?['message']?.toString() ??
+            'Gagal mengambil riwayat transaksi.',
         statusCode: error.response?.statusCode,
       );
     }
@@ -74,7 +78,8 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   }
 
   @override
-  Future<TransactionModel> createTransaction({required TransactionModel transaction}) async {
+  Future<TransactionModel> createTransaction(
+      {required TransactionModel transaction}) async {
     try {
       final response = await dio.post(
         ApiEndpoints.transactions,
@@ -89,18 +94,19 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
       return TransactionModel.fromJson(payload);
     } on DioException catch (error) {
       throw ServerException(
-        error.response?.data?['message']?.toString() ?? 'Gagal membuat transaksi.',
+        error.response?.data?['message']?.toString() ??
+            'Gagal membuat transaksi.',
         statusCode: error.response?.statusCode,
       );
     }
   }
 
   @override
-  Future<TransactionModel> updateTransaction({required TransactionModel transaction}) async {
+  Future<TransactionModel> updateTransaction(
+      {required TransactionModel transaction}) async {
     try {
       final payload = transaction.toJson(forRequest: false);
-      final isPaymentSettlement =
-          payload['payment_status'] == 'paid' ||
+      final isPaymentSettlement = payload['payment_status'] == 'paid' ||
           (payload['paid_amount'] as num? ?? 0) > 0;
 
       final response = isPaymentSettlement
@@ -132,7 +138,8 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
       return TransactionModel.fromJson(data);
     } on DioException catch (error) {
       throw ServerException(
-        error.response?.data?['message']?.toString() ?? 'Gagal memperbarui transaksi.',
+        error.response?.data?['message']?.toString() ??
+            'Gagal memperbarui transaksi.',
         statusCode: error.response?.statusCode,
       );
     }
@@ -146,7 +153,9 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   }) async {
     try {
       final data = <String, dynamic>{
-        'settle_payment': settlePayment,
+        // FormData mengubah bool menjadi string. Laravel menerima 1/0 secara
+        // konsisten untuk rule `boolean`, sedangkan string "true" tidak.
+        'settle_payment': settlePayment ? 1 : 0,
         'payment_method': transaction.paymentMethod,
       };
       if (proofImage != null) {
@@ -182,7 +191,8 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
       );
     } on DioException catch (error) {
       throw ServerException(
-        error.response?.data?['message']?.toString() ?? 'Gagal menghapus transaksi.',
+        error.response?.data?['message']?.toString() ??
+            'Gagal menghapus transaksi.',
         statusCode: error.response?.statusCode,
       );
     }

@@ -44,9 +44,9 @@ enum UserRole {
       this == UserRole.owner || this == UserRole.superOwner;
 
   bool get canManageUsers => isOwnerOrAbove;
-  bool get canViewProfitReports => isOwnerOrAbove;
-  bool get canManageServicePrice => isOwnerOrAbove;
-  bool get canDeleteTransaction => isOwnerOrAbove;
+  bool get canViewProfitReports => this == UserRole.owner;
+  bool get canManageServicePrice => this == UserRole.owner;
+  bool get canDeleteTransaction => this == UserRole.owner;
   bool get canBackupRestore => this == UserRole.superOwner;
   bool get canDeleteAccount => this == UserRole.superOwner;
 }

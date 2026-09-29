@@ -18,6 +18,7 @@ abstract class AuthLocalDataSource {
   });
 
   Future<UserModel?> getSavedUser();
+  Future<void> updateSavedUser(UserModel user);
   Future<String?> getAccessToken();
   Future<bool> isRememberLoginEnabled();
   Future<void> clearSession();
@@ -40,8 +41,10 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     required bool rememberMe,
   }) async {
     try {
-      await secureStorage.write(key: StorageKeys.accessToken, value: accessToken);
-      await secureStorage.write(key: StorageKeys.refreshToken, value: refreshToken);
+      await secureStorage.write(
+          key: StorageKeys.accessToken, value: accessToken);
+      await secureStorage.write(
+          key: StorageKeys.refreshToken, value: refreshToken);
       await secureStorage.write(
         key: StorageKeys.currentUser,
         value: jsonEncode(user.toJson()),
@@ -60,6 +63,18 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
       return UserModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
       throw const CacheException('Gagal membaca data sesi.');
+    }
+  }
+
+  @override
+  Future<void> updateSavedUser(UserModel user) async {
+    try {
+      await secureStorage.write(
+        key: StorageKeys.currentUser,
+        value: jsonEncode(user.toJson()),
+      );
+    } catch (_) {
+      throw const CacheException('Gagal memperbarui data sesi login.');
     }
   }
 

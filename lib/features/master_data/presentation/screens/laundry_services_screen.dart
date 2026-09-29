@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/laundry_service_entity.dart';
 import '../providers/master_data_providers.dart';
 
@@ -15,10 +16,12 @@ class LaundryServicesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final services = ref.watch(laundryServicesProvider);
+    final currentRole = ref.watch(sessionProvider).valueOrNull?.role;
+    final canManageServices = currentRole?.canManageServicePrice ?? false;
     return Scaffold(
         appBar: AppBar(title: const Text('Layanan Laundry')),
         floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showForm(context, ref),
+            onPressed: canManageServices ? () => _showForm(context, ref) : null,
             icon: const Icon(Icons.add),
             label: const Text('Tambah')),
         body: services.when(
@@ -44,12 +47,25 @@ class LaundryServicesScreen extends ConsumerWidget {
                               title: Text(service.name),
                               subtitle: Text(
                                   '${_currency.format(service.price)} • ${service.unit} • ${service.estimatedDurationLabel}'),
-                              trailing: const Icon(Icons.edit_outlined),
-                              onTap: () =>
-                                  _showForm(context, ref, service: service),
-                              onLongPress: () =>
-                                  _confirmDelete(context, ref, service)));
+                              trailing: canManageServices
+                                  ? const Icon(Icons.edit_outlined)
+                                  : null,
+                              onTap: canManageServices
+                                  ? () =>
+                                      _showForm(context, ref, service: service)
+                                  : () => _showNoAccessMessage(context),
+                              onLongPress: canManageServices
+                                  ? () => _confirmDelete(context, ref, service)
+                                  : () => _showNoAccessMessage(context)));
                     }))));
+  }
+
+  void _showNoAccessMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Kasir hanya dapat melihat katalog layanan.'),
+      ),
+    );
   }
 
   Future<void> _showForm(BuildContext context, WidgetRef ref,
@@ -182,8 +198,11 @@ class LaundryServicesScreen extends ConsumerWidget {
 
       if (!context.mounted) return;
       if (result != null) {
-        final saved = await ref.read(laundryServicesProvider.notifier).save(result);
-        if (context.mounted) _showResult(context, saved);
+        final saved =
+            await ref.read(laundryServicesProvider.notifier).save(result);
+        if (context.mounted) {
+          _showResult(context, saved, 'Data layanan berhasil disimpan.');
+        }
       }
     } finally {
       name.dispose();
@@ -211,13 +230,16 @@ class LaundryServicesScreen extends ConsumerWidget {
     if (confirmed == true) {
       final result =
           await ref.read(laundryServicesProvider.notifier).delete(service.id);
-      if (context.mounted) _showResult(context, result);
+      if (context.mounted) {
+        _showResult(context, result, 'Data layanan berhasil dihapus.');
+      }
     }
   }
 
-  void _showResult(BuildContext context, dynamic result) => result.when(
-      success: (_) => ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data layanan berhasil disimpan.'))),
+  void _showResult(BuildContext context, dynamic result, String successMessage) =>
+      result.when(
+      success: (_) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(successMessage))),
       error: (Failure failure) => ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(failure.message))));
 }

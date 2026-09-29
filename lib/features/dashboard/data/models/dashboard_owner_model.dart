@@ -49,16 +49,47 @@ class DashboardChartPoint {
   }
 }
 
+class DashboardOwnerAccount {
+  final String id;
+  final String name;
+  final String username;
+  final bool isActive;
+
+  const DashboardOwnerAccount({
+    required this.id,
+    required this.name,
+    required this.username,
+    required this.isActive,
+  });
+
+  String get label {
+    final identity = username.isEmpty ? name : '$name (@$username)';
+    return isActive ? identity : '$identity (Nonaktif)';
+  }
+
+  factory DashboardOwnerAccount.fromJson(Map<String, dynamic> json) =>
+      DashboardOwnerAccount(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '-',
+        username: json['username']?.toString() ?? '',
+        isActive: json['is_active'] == true || json['is_active'] == 1,
+      );
+}
+
 class DashboardOwnerResponse {
   final DashboardOwnerSummary summary;
   final List<DashboardChartPoint> chart;
   final List<String> accountOptions;
+  final List<DashboardOwnerAccount> accounts;
+  final Map<String, dynamic> insights;
   final List<String> periodOptions;
 
   const DashboardOwnerResponse({
     required this.summary,
     required this.chart,
     required this.accountOptions,
+    required this.accounts,
+    required this.insights,
     required this.periodOptions,
   });
 
@@ -77,14 +108,25 @@ class DashboardOwnerResponse {
             (json['periodOptions'] as List<dynamic>? ?? const []))
         .map((item) => item.toString())
         .toList();
+    final accounts = (json['accounts'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => DashboardOwnerAccount.fromJson(
+              Map<String, dynamic>.from(item),
+            ))
+        .toList();
 
     return DashboardOwnerResponse(
       summary: DashboardOwnerSummary.fromJson(
         Map<String, dynamic>.from(json['summary'] as Map? ?? {}),
       ),
       chart: chartJson.map(DashboardChartPoint.fromJson).toList(),
-      accountOptions: accountOptions.isEmpty ? const ['Keseluruhan', 'Kasir 1'] : accountOptions,
-      periodOptions: periodOptions.isEmpty ? const ['Minggu ini', 'Bulan ini', 'Tahun'] : periodOptions,
+      accountOptions:
+          accountOptions.isEmpty ? const ['Keseluruhan'] : accountOptions,
+      accounts: accounts,
+      insights: Map<String, dynamic>.from(json['insights'] as Map? ?? {}),
+      periodOptions: periodOptions.isEmpty
+          ? const ['Minggu ini', 'Bulan ini', 'Tahun']
+          : periodOptions,
     );
   }
 }

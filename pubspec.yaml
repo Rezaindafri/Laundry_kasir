@@ -12,11 +12,9 @@ dependencies:
 
   # State Management
   flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
 
   # Networking
   dio: ^5.4.3+1
-  connectivity_plus: ^6.0.3
 
   # Routing
   go_router: ^14.2.0
@@ -30,11 +28,7 @@ dependencies:
   shared_preferences: ^2.2.3
 
   # UI
-  cupertino_icons: ^1.0.6
   google_fonts: ^6.2.1
-  flutter_svg: ^2.0.10+1
-  shimmer: ^3.0.0
-  fluttertoast: ^8.2.5
   image_picker: ^1.2.1
 
   # QR Code
@@ -54,6 +48,7 @@ dependencies:
   url_launcher: ^6.3.1
   screenshot: ^3.0.0
   share_plus: ^10.1.4
+  file_picker: ^8.1.7
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +67,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/
-    - assets/icons/

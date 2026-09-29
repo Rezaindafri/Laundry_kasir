@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/utils/result.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/customer_remote_datasource.dart';
 import '../../data/datasources/service_remote_datasource.dart';
 import '../../data/repositories/master_data_repository_impl.dart';
@@ -30,7 +31,10 @@ final customersProvider =
 
 class CustomersNotifier extends AsyncNotifier<List<CustomerEntity>> {
   @override
-  Future<List<CustomerEntity>> build() async => _load();
+  Future<List<CustomerEntity>> build() async {
+    ref.watch(currentSessionUserIdProvider);
+    return _load();
+  }
   Future<List<CustomerEntity>> _load() async {
     final result = await ref.read(masterDataRepositoryProvider).getCustomers();
     return result.when(
@@ -87,7 +91,10 @@ final laundryServicesProvider =
 class LaundryServicesNotifier
     extends AsyncNotifier<List<LaundryServiceEntity>> {
   @override
-  Future<List<LaundryServiceEntity>> build() async => _load();
+  Future<List<LaundryServiceEntity>> build() async {
+    ref.watch(currentSessionUserIdProvider);
+    return _load();
+  }
   Future<List<LaundryServiceEntity>> _load() async {
     final result = await ref.read(masterDataRepositoryProvider).getServices();
     return result.when(

@@ -12,6 +12,7 @@ import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../shared/enums/user_role.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../../master_data/domain/entities/customer_entity.dart';
 import '../../../master_data/domain/entities/laundry_service_entity.dart';
 import '../../../master_data/presentation/providers/master_data_providers.dart';
@@ -53,35 +54,6 @@ extension TransactionListFilterLabel on TransactionListFilter {
         TransactionListFilter.paid => 'Lunas',
         TransactionListFilter.unpaid => 'Belum Lunas',
       };
-
-  bool matches(TransactionEntity transaction) {
-    final resolvedStatus = transaction.resolveLaundryStatusAt(DateTime.now());
-
-    return switch (this) {
-      TransactionListFilter.all => true,
-      TransactionListFilter.today =>
-        transaction.createdAt.year == DateTime.now().year &&
-            transaction.createdAt.month == DateTime.now().month &&
-            transaction.createdAt.day == DateTime.now().day,
-      TransactionListFilter.received =>
-        resolvedStatus == LaundryStatus.received,
-      TransactionListFilter.washing =>
-        resolvedStatus == LaundryStatus.washing ||
-            resolvedStatus == LaundryStatus.drying ||
-            resolvedStatus == LaundryStatus.ironing,
-      TransactionListFilter.completed =>
-        resolvedStatus == LaundryStatus.completed,
-      TransactionListFilter.late => resolvedStatus == LaundryStatus.late,
-      TransactionListFilter.notCollected =>
-        resolvedStatus != LaundryStatus.collected,
-      TransactionListFilter.collected =>
-        resolvedStatus == LaundryStatus.collected,
-      TransactionListFilter.paid =>
-        transaction.paymentStatus == PaymentStatus.paid,
-      TransactionListFilter.unpaid =>
-        transaction.paymentStatus != PaymentStatus.paid,
-    };
-  }
 
   static TransactionListFilter fromQuery(String? value) =>
       TransactionListFilter.values.firstWhere(
@@ -257,6 +229,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   @override
   Widget build(BuildContext context) {
     final transactions = _pageState;
+    final user = ref.watch(sessionProvider).valueOrNull;
     final availableFilters = TransactionListFilter.values
         .where(
           (filter) =>
@@ -266,9 +239,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         )
         .toList();
     return Scaffold(
+      drawer: widget.isCollectionMode || user == null
+          ? null
+          : AppNavigationDrawer(user: user),
       appBar: AppBar(
         title: Text(widget.isCollectionMode ? 'Pengambilan' : 'Transaksi'),
-        automaticallyImplyLeading: widget.isCollectionMode,
+        automaticallyImplyLeading: true,
       ),
       floatingActionButton: widget.isCollectionMode
           ? null
@@ -386,16 +362,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  int _compareTransactions(TransactionEntity first, TransactionEntity second) {
-    final firstCollected =
-        first.resolveLaundryStatusAt(DateTime.now()) == LaundryStatus.collected;
-    final secondCollected = second.resolveLaundryStatusAt(DateTime.now()) ==
-        LaundryStatus.collected;
-    if (firstCollected != secondCollected) {
-      return firstCollected ? 1 : -1;
-    }
-    return second.createdAt.compareTo(first.createdAt);
-  }
 }
 
 class _TransactionFilterSelection {
@@ -581,33 +547,6 @@ class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
       ),
     );
   }
-}
-
-class _EmptyTransactions extends StatelessWidget {
-  const _EmptyTransactions();
-  @override
-  Widget build(BuildContext context) => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.receipt_long_outlined,
-                size: 52,
-                color: AppColors.textSecondary,
-              ),
-              SizedBox(height: 12),
-              Text('Belum ada transaksi', textAlign: TextAlign.center),
-              SizedBox(height: 4),
-              Text(
-                'Buat transaksi baru untuk mulai mencatat laundry.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
 }
 
 class _TransactionCard extends ConsumerWidget {
@@ -1215,8 +1154,8 @@ class _TransactionDetailScreenState
   @override
   Widget build(BuildContext context) {
     final currentRole = ref.watch(sessionProvider).valueOrNull?.role;
-    final canDelete =
-        currentRole == UserRole.owner || currentRole == UserRole.superOwner;
+    final canDelete = currentRole == UserRole.owner &&
+        _transaction.laundryStatus != LaundryStatus.collected;
     return Scaffold(
       floatingActionButton: _PrintReceiptButton(transaction: _transaction),
       appBar: AppBar(
