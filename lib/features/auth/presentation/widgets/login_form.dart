@@ -21,6 +21,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
 
   bool _rememberMe = true;
   bool _isSubmitting = false;
+  String? _loginError;
 
   @override
   void dispose() {
@@ -32,7 +33,10 @@ class _LoginFormState extends ConsumerState<LoginForm> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _loginError = null;
+    });
 
     final result = await ref.read(sessionProvider.notifier).login(
           username: _usernameController.text,
@@ -46,6 +50,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
     result.when(
       success: (_) {},
       error: (Failure failure) {
+        setState(() => _loginError = failure.message);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(failure.message),
@@ -94,6 +99,28 @@ class _LoginFormState extends ConsumerState<LoginForm> {
               return null;
             },
           ),
+          if (_loginError != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: AppColors.error),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _loginError!,
+                      style: const TextStyle(color: AppColors.error),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 4),
           Row(
             children: [

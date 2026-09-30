@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/dio_client.dart';
@@ -12,16 +13,18 @@ final reportRemoteDataSourceProvider = Provider<ReportRemoteDataSource>(
 );
 
 final reportsOverviewProvider =
-    AsyncNotifierProvider<ReportsOverviewNotifier, ReportsOverview>(
+    AsyncNotifierProvider<ReportsOverviewNotifier, OwnerReportOverview>(
   ReportsOverviewNotifier.new,
 );
 
-class ReportsOverviewNotifier extends AsyncNotifier<ReportsOverview> {
+class ReportsOverviewNotifier extends AsyncNotifier<OwnerReportOverview> {
+  DateTimeRange? _range;
+  String? _cashierId;
   ReportRemoteDataSource get _remote =>
       ref.read(reportRemoteDataSourceProvider);
 
   @override
-  Future<ReportsOverview> build() {
+  Future<OwnerReportOverview> build() {
     ref.watch(currentSessionUserIdProvider);
     return _load();
   }
@@ -31,25 +34,30 @@ class ReportsOverviewNotifier extends AsyncNotifier<ReportsOverview> {
     state = await AsyncValue.guard(_load);
   }
 
+  Future<void> setRange(DateTimeRange range) async {
+    _range = range;
+    await refresh();
+  }
+
+  Future<void> setCashier(String? cashierId) async {
+    _cashierId = cashierId;
+    await refresh();
+  }
+
   Future<Uint8List> exportCsv({
     required DateTime startDate,
     required DateTime endDate,
   }) =>
       _remote.exportCsv(startDate: startDate, endDate: endDate);
 
-  Future<ReportsOverview> _load() async {
+  Future<OwnerReportOverview> _load() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final monthStart = DateTime(now.year, now.month);
-    final results = await Future.wait([
-      _remote.getRevenue(startDate: today, endDate: today),
-      _remote.getRevenue(startDate: monthStart, endDate: today),
-      _remote.getStatistics(),
-    ]);
-    return ReportsOverview(
-      today: results[0] as RevenueReport,
-      thisMonth: results[1] as RevenueReport,
-      statistics: results[2] as ReportStatistics,
+    final range = _range ?? DateTimeRange(start: today, end: now);
+    return _remote.getOverview(
+      startDate: range.start,
+      endDate: range.end,
+      cashierId: _cashierId,
     );
   }
 }

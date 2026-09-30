@@ -5,6 +5,9 @@ class DashboardOwnerSummary {
   final int processing;
   final int readyToPickup;
   final int todayRevenue;
+  final int orderValue;
+  final int paymentsReceived;
+  final int outstandingAmount;
 
   const DashboardOwnerSummary({
     required this.revenue,
@@ -13,6 +16,9 @@ class DashboardOwnerSummary {
     required this.processing,
     required this.readyToPickup,
     required this.todayRevenue,
+    required this.orderValue,
+    required this.paymentsReceived,
+    required this.outstandingAmount,
   });
 
   factory DashboardOwnerSummary.fromJson(Map<String, dynamic> json) {
@@ -31,6 +37,11 @@ class DashboardOwnerSummary {
           (json['readyToPickup'] as num?)?.toInt() ??
           0,
       todayRevenue: (json['today_revenue'] as num?)?.toInt() ?? 0,
+      orderValue: (json['order_value'] as num?)?.toInt() ?? 0,
+      paymentsReceived: (json['payments_received'] as num?)?.toInt() ??
+          (json['revenue'] as num?)?.toInt() ??
+          0,
+      outstandingAmount: (json['outstanding_amount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -83,6 +94,9 @@ class DashboardOwnerResponse {
   final List<DashboardOwnerAccount> accounts;
   final Map<String, dynamic> insights;
   final List<String> periodOptions;
+  final List<Map<String, dynamic>> paymentDetails;
+  final List<Map<String, dynamic>> orderDetails;
+  final List<Map<String, dynamic>> outstandingItems;
 
   const DashboardOwnerResponse({
     required this.summary,
@@ -91,6 +105,9 @@ class DashboardOwnerResponse {
     required this.accounts,
     required this.insights,
     required this.periodOptions,
+    required this.paymentDetails,
+    required this.orderDetails,
+    required this.outstandingItems,
   });
 
   factory DashboardOwnerResponse.fromJson(Map<String, dynamic> json) {
@@ -127,6 +144,16 @@ class DashboardOwnerResponse {
       periodOptions: periodOptions.isEmpty
           ? const ['Minggu ini', 'Bulan ini', 'Tahun']
           : periodOptions,
+      paymentDetails: _objectList(json['payment_details']),
+      orderDetails: _objectList(json['order_details']),
+      outstandingItems: _objectList(json['outstanding_items']),
     );
   }
 }
+
+List<Map<String, dynamic>> _objectList(dynamic value) => value is List
+    ? value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList()
+    : const [];

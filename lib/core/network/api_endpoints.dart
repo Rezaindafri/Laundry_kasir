@@ -15,6 +15,7 @@ abstract class ApiEndpoints {
   // Users
   static const String users = '/users';
   static String userById(String id) => '/users/$id';
+  static String userCredentials(String id) => '/users/$id/credentials';
   static String userStatus(String id) => '/users/$id/status';
   static String resetPassword(String id) => '/users/$id/reset-password';
 
@@ -41,6 +42,7 @@ abstract class ApiEndpoints {
   static const String dashboardSuperOwner = '/dashboard/super-owner';
   static const String reportsRevenue = '/reports/revenue';
   static const String reportsStatistics = '/reports/statistics';
+  static const String reportsOverview = '/reports/overview';
   static const String reportsExport = '/reports/export';
   static const String auditLogs = '/audit-logs';
 

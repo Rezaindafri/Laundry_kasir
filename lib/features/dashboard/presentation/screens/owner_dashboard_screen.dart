@@ -155,10 +155,17 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                   childAspectRatio: 1.35,
                   children: [
                     _KpiCard(
-                      label: 'Pendapatan',
+                      label: 'Pembayaran diterima',
                       value: currency.format(dashboardSummary.revenue),
                       trend: dashboardSummary.revenueTrend,
-                      onTap: () => GoRouter.of(context).push(AppRoutes.reports),
+                      onTap: () => _showFinancialDetails(
+                        context,
+                        title: 'Pembayaran diterima',
+                        total: dashboard?.summary.paymentsReceived ?? 0,
+                        items: dashboard?.paymentDetails ?? const [],
+                        isPayment: true,
+                        currency: currency,
+                      ),
                     ),
                     _KpiCard(
                       label: 'Transaksi',
@@ -182,6 +189,37 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                           GoRouter.of(context).push(AppRoutes.transactions),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                _FinancialSummaryCard(
+                  label: 'Nilai pesanan',
+                  description: 'Pesanan dibuat pada periode ini',
+                  value: currency.format(dashboard?.summary.orderValue ?? 0),
+                  icon: Icons.receipt_long_outlined,
+                  onTap: () => _showFinancialDetails(
+                    context,
+                    title: 'Nilai pesanan',
+                    total: dashboard?.summary.orderValue ?? 0,
+                    items: dashboard?.orderDetails ?? const [],
+                    isPayment: false,
+                    isOrder: true,
+                    currency: currency,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _FinancialSummaryCard(
+                  label: 'Tagihan belum lunas',
+                  description: 'Sisa tagihan pesanan periode ini',
+                  value: currency.format(dashboard?.summary.outstandingAmount ?? 0),
+                  icon: Icons.account_balance_wallet_outlined,
+                  onTap: () => _showFinancialDetails(
+                    context,
+                    title: 'Tagihan belum lunas',
+                    total: dashboard?.summary.outstandingAmount ?? 0,
+                    items: dashboard?.outstandingItems ?? const [],
+                    isPayment: false,
+                    currency: currency,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 Row(
@@ -259,11 +297,14 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 _SectionCard(
                   title: 'Yang Perlu Perhatian',
                   trailing: 'Lihat semua',
-                  child: Column(
-                    children: attentionItems
-                        .map((item) => _AttentionRow(item: item))
-                        .toList(),
-                  ),
+                  child: attentionItems.isEmpty
+                      ? Text('Tidak ada transaksi yang perlu ditinjau.',
+                          style: AppTextStyles.bodyMuted)
+                      : Column(
+                          children: attentionItems
+                              .map((item) => _AttentionRow(item: item))
+                              .toList(),
+                        ),
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(
@@ -419,6 +460,67 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     }
     return 'Keseluruhan';
   }
+
+  Future<void> _showFinancialDetails(
+    BuildContext context, {
+    required String title,
+    required int total,
+    required List<Map<String, dynamic>> items,
+    required bool isPayment,
+    bool isOrder = false,
+    required NumberFormat currency,
+  }) => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) => SafeArea(
+          child: DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.7,
+            minChildSize: 0.45,
+            builder: (_, controller) => ListView.separated(
+              controller: controller,
+              padding: const EdgeInsets.all(16),
+              itemCount: items.length + 1,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, index) {
+                if (index == 0) {
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(title,
+                        style: Theme.of(sheetContext).textTheme.titleLarge),
+                    subtitle: const Text('Total sesuai ringkasan periode'),
+                    trailing: Text(currency.format(total),
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                  );
+                }
+                final item = items[index - 1];
+                final amount = isPayment
+                    ? (item['payment_amount'] as num?)?.toInt() ?? 0
+                    : isOrder
+                        ? (item['total'] as num?)?.toInt() ?? 0
+                        : (item['outstanding_amount'] as num?)?.toInt() ?? 0;
+                return ListTile(
+                  title: Text('${item['invoice'] ?? '-'} • ${item['customer_name'] ?? 'Pelanggan'}'),
+                  subtitle: Text(isPayment
+                      ? '${item['payment_method']?.toString().toUpperCase() ?? 'CASH'} • ${_paymentDateLabel(item['paid_at'])}'
+                      : isOrder
+                          ? 'Status ${item['laundry_status'] ?? '-'} • ${item['payment_status'] ?? '-'}'
+                          : 'Total ${currency.format((item['total'] as num?)?.toInt() ?? 0)} • Sudah dibayar ${currency.format((item['paid_amount'] as num?)?.toInt() ?? 0)}'),
+                  trailing: Text(currency.format(amount),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+}
+
+String _paymentDateLabel(dynamic value) {
+  final date = DateTime.tryParse(value?.toString() ?? '');
+  return date == null
+      ? 'Tanggal tidak tersedia'
+      : DateFormat('d MMM y, HH:mm', 'id_ID').format(date.toLocal());
 }
 
 enum _RevenuePeriod {
@@ -488,10 +590,10 @@ _DashboardSummary _buildDashboardSummaryFromApi(
   NumberFormat currency,
 ) {
   return _DashboardSummary(
-    revenue: summary.revenue,
-    revenueTrend: summary.todayRevenue > 0
-        ? 'Hari ini ${currency.format(summary.todayRevenue)}'
-        : 'Belum ada data',
+    revenue: summary.paymentsReceived,
+    revenueTrend: summary.paymentsReceived > 0
+        ? 'Diterima pada periode ini'
+        : 'Belum ada pembayaran pada periode ini',
     transactions: summary.transactions,
     transactionTrend:
         summary.transactions > 0 ? 'Data realtime' : 'Belum ada data',
@@ -732,10 +834,13 @@ class _KpiCard extends StatelessWidget {
           children: [
             Text(label, style: AppTextStyles.bodyMuted),
             const SizedBox(height: 10),
-            Text(
-              value,
-              style: AppTextStyles.headline.copyWith(fontSize: 24),
-              overflow: TextOverflow.ellipsis,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: AppTextStyles.headline.copyWith(fontSize: 24),
+              ),
             ),
             const Spacer(),
             Row(
@@ -760,6 +865,61 @@ class _KpiCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FinancialSummaryCard extends StatelessWidget {
+  final String label;
+  final String description;
+  final String value;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _FinancialSummaryCard({
+    required this.label,
+    required this.description,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: AppTextStyles.body),
+                    Text(description, style: AppTextStyles.bodyMuted),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(value,
+                      style: AppTextStyles.title
+                          .copyWith(fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class _SectionCard extends StatelessWidget {
@@ -894,18 +1054,95 @@ class _RevenueChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxValue = points.isEmpty
-        ? 1.0
-        : points.map((p) => p.value).reduce(math.max).toDouble();
-    final textDirection = Directionality.of(context);
-    return SizedBox(
-      height: 180,
-      child: CustomPaint(
-        painter: _RevenueChartPainter(
-          points: points,
-          maxValue: maxValue,
-          textDirection: textDirection,
+    final currency = NumberFormat.compactCurrency(
+      locale: 'id_ID',
+      symbol: 'Rp',
+      decimalDigits: 0,
+    );
+    final maxValue =
+        points.map((point) => point.value).fold<double>(0, math.max);
+    final total = points.fold<double>(0, (sum, point) => sum + point.value);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Total: ${currency.format(total)}', style: AppTextStyles.bodyMuted),
+            Text('Tertinggi: ${currency.format(maxValue)}',
+                style: AppTextStyles.bodyMuted),
+          ],
         ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 164,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (final point in points)
+                Expanded(
+                  child: _RevenueBar(
+                    point: point,
+                    maxValue: maxValue,
+                    currency: currency,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RevenueBar extends StatelessWidget {
+  final _RevenuePoint point;
+  final double maxValue;
+  final NumberFormat currency;
+
+  const _RevenueBar({
+    required this.point,
+    required this.maxValue,
+    required this.currency,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = maxValue == 0 ? 0.0 : point.value / maxValue;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Column(
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => Align(
+                alignment: Alignment.bottomCenter,
+                child: Tooltip(
+                  message: '${point.label}: ${currency.format(point.value)}',
+                  child: Container(
+                    height: point.value == 0
+                        ? 4
+                        : math.max(8, constraints.maxHeight * fraction),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(6),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            point.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.bodyMuted.copyWith(fontSize: 10),
+          ),
+        ],
       ),
     );
   }
@@ -1009,6 +1246,13 @@ class _LaundryPerformance extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = distribution.fold<int>(0, (sum, item) => sum + item.count);
     final items = distribution.where((item) => item.count > 0).toList();
+
+    if (items.isEmpty) {
+      return const SizedBox(
+        height: 140,
+        child: Center(child: Text('Belum ada transaksi untuk ditampilkan.')),
+      );
+    }
 
     return SizedBox(
       height: 140,
@@ -1378,6 +1622,26 @@ List<_MonitoringItem> _serverMonitoring(Map<String, dynamic> insights) {
 }
 
 List<_AttentionItem> _serverAttention(Map<String, dynamic> insights) {
+  final rows = insights['attention_items'] as List<dynamic>? ?? const [];
+  if (rows.isNotEmpty) {
+    return rows.whereType<Map>().map((row) {
+      final reasons = (row['reasons'] as List<dynamic>? ?? const [])
+          .map((reason) => reason.toString())
+          .join(' • ');
+      final isLate = row['laundry_status']?.toString() == 'late';
+      final outstanding = (row['outstanding_amount'] as num?)?.toInt() ?? 0;
+      return _AttentionItem(
+        '${row['invoice'] ?? '-'} • ${row['customer_name'] ?? 'Pelanggan'}',
+        outstanding > 0 ? '$reasons • Sisa tagihan Rp$outstanding' : reasons,
+        isLate
+            ? AppColors.error
+            : outstanding > 0
+                ? AppColors.warning
+                : AppColors.info,
+        isLate ? Icons.warning_amber_rounded : Icons.receipt_long_outlined,
+      );
+    }).toList();
+  }
   final monitoring = Map<String, dynamic>.from(
     insights['monitoring'] as Map? ?? const {},
   );

@@ -44,10 +44,18 @@ class DioClient {
           return handler.next(options);
         },
         onError: (DioException error, handler) async {
-          _logger.e(
-            '[API ERROR] ${error.requestOptions.method} '
-            '${error.requestOptions.path} -> ${error.message}',
-          );
+          final isRejectedLogin = error.response?.statusCode == 401 &&
+              error.requestOptions.path.endsWith('/auth/login');
+          final message = '[API ${isRejectedLogin ? 'INFO' : 'ERROR'}] '
+              '${error.requestOptions.method} ${error.requestOptions.path} '
+              '-> ${error.message}';
+          if (isRejectedLogin) {
+            // Salah kredensial adalah hasil yang diharapkan dari percobaan
+            // login, bukan kegagalan jaringan/CORS.
+            _logger.i(message);
+          } else {
+            _logger.e(message);
+          }
 
           if (error.response?.statusCode == 401) {
             return handler.reject(

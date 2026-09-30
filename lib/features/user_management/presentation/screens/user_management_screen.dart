@@ -105,7 +105,24 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                   .where((user) => user.role == _superOwnerSection)
                   .toList(growable: false)
               : users;
-          final list = ListView.separated(
+          final emptyMessage = current.role == UserRole.superOwner
+              ? _superOwnerSection == UserRole.owner
+                  ? 'Data owner saat ini belum tersedia.'
+                  : 'Data kasir saat ini belum tersedia.'
+              : 'Belum ada kasir di bawah Owner ini.';
+          final list = visibleUsers.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    const SizedBox(height: 150),
+                    const Icon(Icons.people_outline,
+                        size: 48, color: Colors.blueGrey),
+                    const SizedBox(height: 12),
+                    Text(emptyMessage, textAlign: TextAlign.center),
+                  ],
+                )
+              : ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: visibleUsers.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -138,6 +155,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           ref,
                           current.role,
                           user: user,
+                          passwordMinLength: passwordMinLength,
                         ),
               ),
             );
@@ -235,7 +253,13 @@ Future<void> _showUserForm(
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: username,
-                  decoration: const InputDecoration(labelText: 'Username'),
+                  enabled: user == null,
+                  decoration: InputDecoration(
+                    labelText: 'Username',
+                    helperText: user == null
+                        ? null
+                        : 'Ubah melalui Kelola kredensial dengan verifikasi owner.',
+                  ),
                   validator: (value) =>
                       Validators.required(value, field: 'Username'),
                 ),
@@ -324,6 +348,26 @@ Future<void> _showUserForm(
                   },
                   child: const Text('Simpan'),
                 ),
+                if (user != null) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      // Tunggu bottom sheet ini selesai tertutup sebelum
+                      // membuka sheet kredensial. Dua sheet yang bertumpuk
+                      // dapat meninggalkan dependents widget yang belum lepas.
+                      Navigator.pop(
+                        sheetContext,
+                        _UserFormResult(
+                          user: user,
+                          password: '',
+                          openCredentials: true,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.key_outlined),
+                    label: const Text('Kelola kredensial'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -332,6 +376,21 @@ Future<void> _showUserForm(
     ),
   );
 
+  name.dispose();
+  username.dispose();
+  password.dispose();
+  if (result != null && result.openCredentials && user != null) {
+    if (context.mounted) {
+      await _showCredentialEditor(
+        context,
+        ref,
+        user,
+        managerRole: actorRole,
+        passwordMinLength: passwordMinLength,
+      );
+    }
+    return;
+  }
   if (result != null) {
     final saved = await ref
         .read(managedUsersProvider.notifier)
@@ -353,9 +412,6 @@ Future<void> _showUserForm(
       );
     }
   }
-  name.dispose();
-  username.dispose();
-  password.dispose();
 }
 
 Future<void> _toggleStatus(
@@ -382,11 +438,166 @@ Future<void> _toggleStatus(
   );
 }
 
+Future<void> _showCredentialEditor(
+  BuildContext context,
+  WidgetRef ref,
+  UserEntity user, {
+  required UserRole managerRole,
+  required int passwordMinLength,
+}) async {
+  final managerLabel =
+      managerRole == UserRole.superOwner ? 'Super Owner' : 'Owner';
+  final formKey = GlobalKey<FormState>();
+  final managerUsername = TextEditingController(
+    text: ref.read(sessionProvider).valueOrNull?.username ?? '',
+  );
+  final managerPassword = TextEditingController();
+  final name = TextEditingController(text: user.name);
+  final username = TextEditingController(text: user.username);
+  final newPassword = TextEditingController();
+
+  final result = await showModalBottomSheet<_CredentialUpdate>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) => SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          24,
+          24,
+          24 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Kelola kredensial akun',
+                  style: Theme.of(sheetContext).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                'Password lama tidak dapat ditampilkan. Verifikasi akun $managerLabel untuk mengubah nama, username, atau menetapkan password baru.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Nama panggilan'),
+                validator: (value) =>
+                    Validators.required(value, field: 'Nama panggilan'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: username,
+                decoration: const InputDecoration(labelText: 'Username akun'),
+                validator: (value) =>
+                    Validators.required(value, field: 'Username akun'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: newPassword,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Password baru (opsional)',
+                  helperText:
+                      'Kosongkan bila hanya mengubah nama atau username.',
+                ),
+                validator: (value) => value != null && value.isNotEmpty &&
+                        value.length < passwordMinLength
+                    ? 'Password minimal $passwordMinLength karakter'
+                    : null,
+              ),
+              const Divider(height: 36),
+              TextFormField(
+                controller: managerUsername,
+                decoration: InputDecoration(labelText: 'Username $managerLabel'),
+                validator: (value) =>
+                    Validators.required(value, field: 'Username $managerLabel'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: managerPassword,
+                obscureText: true,
+                decoration: InputDecoration(labelText: 'Password $managerLabel'),
+                validator: (value) =>
+                    Validators.required(value, field: 'Password $managerLabel'),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () {
+                  if (!formKey.currentState!.validate()) return;
+                  Navigator.pop(
+                    sheetContext,
+                    _CredentialUpdate(
+                      managerUsername: managerUsername.text.trim(),
+                      managerPassword: managerPassword.text,
+                      name: name.text.trim(),
+                      username: username.text.trim(),
+                      password: newPassword.text,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.verified_user_outlined),
+                label: const Text('Verifikasi dan simpan'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  managerUsername.dispose();
+  managerPassword.dispose();
+  name.dispose();
+  username.dispose();
+  newPassword.dispose();
+  if (result == null || !context.mounted) return;
+
+  final saved = await ref.read(managedUsersProvider.notifier).updateCredentials(
+        user: user,
+        managerUsername: result.managerUsername,
+        managerPassword: result.managerPassword,
+        name: result.name,
+        username: result.username,
+        password: result.password,
+      );
+  if (!context.mounted) return;
+  saved.when(
+    success: (_) => ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Kredensial akun berhasil diperbarui.')),
+    ),
+    error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(failure.message)),
+    ),
+  );
+}
+
 class _UserFormResult {
   final UserEntity user;
   final String password;
+  final bool openCredentials;
 
-  const _UserFormResult({required this.user, required this.password});
+  const _UserFormResult({
+    required this.user,
+    required this.password,
+    this.openCredentials = false,
+  });
+}
+
+class _CredentialUpdate {
+  final String managerUsername;
+  final String managerPassword;
+  final String name;
+  final String username;
+  final String password;
+
+  const _CredentialUpdate({
+    required this.managerUsername,
+    required this.managerPassword,
+    required this.name,
+    required this.username,
+    required this.password,
+  });
 }
 
 class _LoadError extends StatelessWidget {

@@ -31,7 +31,26 @@ class LaundryServicesScreen extends ConsumerWidget {
             data: (items) => RefreshIndicator(
                 onRefresh: () =>
                     ref.read(laundryServicesProvider.notifier).refresh(),
-                child: ListView.separated(
+                child: items.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(24),
+                        children: const [
+                          SizedBox(height: 150),
+                          Icon(Icons.local_laundry_service_outlined,
+                              size: 48, color: AppColors.textSecondary),
+                          SizedBox(height: 12),
+                          Text('Data layanan laundry saat ini belum tersedia.',
+                              textAlign: TextAlign.center),
+                          SizedBox(height: 6),
+                          Text(
+                            'Tambahkan layanan agar transaksi dapat dibuat.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ],
+                      )
+                    : ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: items.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),

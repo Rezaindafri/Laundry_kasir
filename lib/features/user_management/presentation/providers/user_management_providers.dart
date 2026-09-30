@@ -74,6 +74,38 @@ class ManagedUsersNotifier extends AsyncNotifier<List<UserEntity>> {
     return result;
   }
 
+  Future<Result<UserEntity>> updateCredentials({
+    required UserEntity user,
+    required String managerUsername,
+    required String managerPassword,
+    required String name,
+    required String username,
+    String? password,
+  }) async {
+    final result = await ref
+        .read(userManagementRepositoryProvider)
+        .updateCredentials(
+          user: user,
+          managerUsername: managerUsername,
+          managerPassword: managerPassword,
+          name: name,
+          username: username,
+          password: password,
+        );
+    result.when(
+      success: (updated) {
+        final users = <UserEntity>[...(state.valueOrNull ?? [])];
+        final index = users.indexWhere((entry) => entry.id == updated.id);
+        if (index >= 0) {
+          users[index] = updated;
+          state = AsyncData(users);
+        }
+      },
+      error: (_) {},
+    );
+    return result;
+  }
+
   Future<void> refresh() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(build);

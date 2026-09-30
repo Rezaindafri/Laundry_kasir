@@ -8,6 +8,14 @@ import '../../../auth/domain/entities/user_entity.dart';
 abstract class UserManagementRemoteDataSource {
   Future<List<UserModel>> getUsers();
   Future<UserModel> saveUser(UserEntity user, {String? password});
+  Future<UserModel> updateCredentials({
+    required UserEntity user,
+    required String managerUsername,
+    required String managerPassword,
+    required String name,
+    required String username,
+    String? password,
+  });
   Future<UserModel> toggleUserStatus(String id);
 }
 
@@ -42,10 +50,10 @@ class UserManagementRemoteDataSourceImpl
   Future<UserModel> saveUser(UserEntity user, {String? password}) async {
     final request = <String, dynamic>{
       'name': user.name,
-      'username': user.username,
       'role': user.role.apiValue,
       'is_active': user.isActive,
     };
+    if (user.id.isEmpty) request['username'] = user.username;
     if (user.role.apiValue == 'kasir' && user.ownerId != null) {
       request['owner_id'] = user.ownerId;
     }
@@ -58,6 +66,32 @@ class UserManagementRemoteDataSourceImpl
       return UserModel.fromJson(_objectData(response.data));
     } on DioException catch (error) {
       throw _serverException(error, 'Gagal menyimpan akun pengguna.');
+    }
+  }
+
+  @override
+  Future<UserModel> updateCredentials({
+    required UserEntity user,
+    required String managerUsername,
+    required String managerPassword,
+    required String name,
+    required String username,
+    String? password,
+  }) async {
+    try {
+      final response = await dio.post(
+        ApiEndpoints.userCredentials(user.id),
+        data: {
+          'manager_username': managerUsername,
+          'manager_password': managerPassword,
+          'name': name,
+          'username': username,
+          if (password != null && password.isNotEmpty) 'password': password,
+        },
+      );
+      return UserModel.fromJson(_objectData(response.data));
+    } on DioException catch (error) {
+      throw _serverException(error, 'Gagal memperbarui kredensial akun.');
     }
   }
 

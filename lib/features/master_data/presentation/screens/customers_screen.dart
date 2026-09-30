@@ -89,7 +89,26 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             onRetry: () => ref.read(customersProvider.notifier).refresh()),
         data: (items) => RefreshIndicator(
           onRefresh: () => ref.read(customersProvider.notifier).refresh(),
-          child: ListView.separated(
+          child: items.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24),
+                  children: const [
+                    SizedBox(height: 150),
+                    Icon(Icons.people_outline,
+                        size: 48, color: AppColors.textSecondary),
+                    SizedBox(height: 12),
+                    Text('Data pelanggan saat ini belum tersedia.',
+                        textAlign: TextAlign.center),
+                    SizedBox(height: 6),
+                    Text(
+                      'Tambahkan pelanggan untuk mulai membuat transaksi.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ],
+                )
+              : ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: items.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),

@@ -23,7 +23,9 @@ class _AuditEntry {
     return _AuditEntry(
       action: json['action']?.toString() ?? '-',
       subjectType: json['subject_type']?.toString() ?? '-',
-      actor: actor is Map ? actor['name']?.toString() ?? 'Sistem' : 'Sistem',
+      actor: actor is Map
+          ? '${actor['name']?.toString() ?? 'Sistem'}${actor['role'] == null ? '' : ' (${actor['role']})'}'
+          : 'Sistem',
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
     );
@@ -98,6 +100,8 @@ class AuditLogsScreen extends ConsumerWidget {
         'transaction.status_updated' => 'Status laundry diperbarui',
         'transaction.payment_recorded' => 'Pembayaran dicatat',
         'transaction.collected' => 'Laundry diambil',
+        'transaction.proof_uploaded_and_collected' =>
+          'Bukti pengambilan diunggah',
         'transaction.deleted' => 'Transaksi dihapus',
         'transaction.status_synchronized' => 'Status diperbarui otomatis',
         'user.created' => 'Akun dibuat',

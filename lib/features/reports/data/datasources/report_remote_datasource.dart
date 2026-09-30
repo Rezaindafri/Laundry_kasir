@@ -13,6 +13,11 @@ abstract class ReportRemoteDataSource {
   });
 
   Future<ReportStatistics> getStatistics();
+  Future<OwnerReportOverview> getOverview({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cashierId,
+  });
 
   Future<Uint8List> exportCsv({
     required DateTime startDate,
@@ -48,6 +53,26 @@ class ReportRemoteDataSourceImpl implements ReportRemoteDataSource {
       return ReportStatistics.fromJson(_data(response.data));
     } on DioException catch (error) {
       throw _serverException(error, 'Gagal mengambil statistik laporan.');
+    }
+  }
+
+  @override
+  Future<OwnerReportOverview> getOverview({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cashierId,
+  }) async {
+    try {
+      final response = await dio.get(
+        ApiEndpoints.reportsOverview,
+        queryParameters: {
+          ..._dateParameters(startDate, endDate),
+          if (cashierId != null) 'cashier_id': cashierId,
+        },
+      );
+      return OwnerReportOverview.fromJson(_data(response.data));
+    } on DioException catch (error) {
+      throw _serverException(error, 'Gagal mengambil rincian laporan.');
     }
   }
 
