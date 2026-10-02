@@ -7,12 +7,6 @@ import '../../../../core/network/api_endpoints.dart';
 import '../models/report_models.dart';
 
 abstract class ReportRemoteDataSource {
-  Future<RevenueReport> getRevenue({
-    required DateTime startDate,
-    required DateTime endDate,
-  });
-
-  Future<ReportStatistics> getStatistics();
   Future<OwnerReportOverview> getOverview({
     required DateTime startDate,
     required DateTime endDate,
@@ -22,6 +16,7 @@ abstract class ReportRemoteDataSource {
   Future<Uint8List> exportCsv({
     required DateTime startDate,
     required DateTime endDate,
+    String? cashierId,
   });
 }
 
@@ -29,32 +24,6 @@ class ReportRemoteDataSourceImpl implements ReportRemoteDataSource {
   final Dio dio;
 
   const ReportRemoteDataSourceImpl(this.dio);
-
-  @override
-  Future<RevenueReport> getRevenue({
-    required DateTime startDate,
-    required DateTime endDate,
-  }) async {
-    try {
-      final response = await dio.get(
-        ApiEndpoints.reportsRevenue,
-        queryParameters: _dateParameters(startDate, endDate),
-      );
-      return RevenueReport.fromJson(_data(response.data));
-    } on DioException catch (error) {
-      throw _serverException(error, 'Gagal mengambil laporan pendapatan.');
-    }
-  }
-
-  @override
-  Future<ReportStatistics> getStatistics() async {
-    try {
-      final response = await dio.get(ApiEndpoints.reportsStatistics);
-      return ReportStatistics.fromJson(_data(response.data));
-    } on DioException catch (error) {
-      throw _serverException(error, 'Gagal mengambil statistik laporan.');
-    }
-  }
 
   @override
   Future<OwnerReportOverview> getOverview({
@@ -80,6 +49,7 @@ class ReportRemoteDataSourceImpl implements ReportRemoteDataSource {
   Future<Uint8List> exportCsv({
     required DateTime startDate,
     required DateTime endDate,
+    String? cashierId,
   }) async {
     try {
       final response = await dio.get<List<int>>(
@@ -87,6 +57,7 @@ class ReportRemoteDataSourceImpl implements ReportRemoteDataSource {
         queryParameters: {
           ..._dateParameters(startDate, endDate),
           'type': 'csv',
+          if (cashierId != null) 'cashier_id': cashierId,
         },
         options: Options(responseType: ResponseType.bytes),
       );

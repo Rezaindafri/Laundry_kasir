@@ -7,7 +7,6 @@ abstract class ApiEndpoints {
   // Auth
   static const String login = '/auth/login';
   static const String logout = '/auth/logout';
-  static const String refreshToken = '/auth/refresh';
   static const String me = '/auth/me';
   static const String profile = '/profile';
   static const String profilePassword = '/profile/password';
@@ -17,7 +16,6 @@ abstract class ApiEndpoints {
   static String userById(String id) => '/users/$id';
   static String userCredentials(String id) => '/users/$id/credentials';
   static String userStatus(String id) => '/users/$id/status';
-  static String resetPassword(String id) => '/users/$id/reset-password';
 
   // Customers
   static const String customers = '/customers';
@@ -30,8 +28,6 @@ abstract class ApiEndpoints {
   // Transactions
   static const String transactions = '/transactions';
   static String transactionById(String id) => '/transactions/$id';
-  static String transactionByInvoice(String invoice) =>
-      '/transactions/invoice/$invoice';
   static String updateStatus(String id) => '/transactions/$id/status';
   static String payment(String id) => '/transactions/$id/payment';
   static String collection(String id) => '/transactions/$id/collection';
@@ -40,8 +36,6 @@ abstract class ApiEndpoints {
   static const String dashboardOwner = '/dashboard/owner';
   static const String dashboardKasir = '/dashboard/kasir';
   static const String dashboardSuperOwner = '/dashboard/super-owner';
-  static const String reportsRevenue = '/reports/revenue';
-  static const String reportsStatistics = '/reports/statistics';
   static const String reportsOverview = '/reports/overview';
   static const String reportsExport = '/reports/export';
   static const String auditLogs = '/audit-logs';

@@ -118,10 +118,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               const SizedBox(height: 18),
               _TodayPaymentHero(
                 amount: data.paymentsReceived,
-                orderCount: data.orderCount,
+                paymentCount: data.paymentCount,
               ),
               const SizedBox(height: 14),
-              _PaymentTrendChart(points: data.chart),
+              _PaymentTrendChart(points: data.chart, endDate: data.endDate),
               const SizedBox(height: 14),
               _PaymentMethodCard(
                 cash: data.cashPayments,
@@ -153,6 +153,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               Text(
                 'Operasional',
                 style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Status pesanan yang dibuat pada periode terpilih.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
               Card(
@@ -223,7 +228,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.file_download_outlined),
-                label: Text(_isExporting ? 'Menyiapkan CSV...' : 'Export CSV'),
+                label: Text(
+                  _isExporting ? 'Menyiapkan CSV...' : 'Export CSV periode aktif',
+                ),
               ),
             ],
           ),
@@ -276,35 +283,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Future<void> _exportCsv() async {
-    final now = DateTime.now();
-    final initialRange = DateTimeRange(
-      start: DateTime(now.year, now.month),
-      end: DateTime(now.year, now.month, now.day),
-    );
-    final selected = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: now,
-      initialDateRange: initialRange,
-      helpText: 'Pilih periode laporan',
-    );
-    if (selected == null || !mounted) return;
+    final overview = ref.read(reportsOverviewProvider).valueOrNull;
+    if (overview == null) return;
 
     setState(() => _isExporting = true);
     try {
-      final bytes = await ref.read(reportsOverviewProvider.notifier).exportCsv(
-            startDate: selected.start,
-            endDate: selected.end,
-          );
+      final bytes =
+          await ref.read(reportsOverviewProvider.notifier).exportCsv();
       final fileName = 'laporan-pendapatan-'
-          '${DateFormat('yyyyMMdd').format(selected.start)}-'
-          '${DateFormat('yyyyMMdd').format(selected.end)}.csv';
+          '${DateFormat('yyyyMMdd').format(overview.startDate)}-'
+          '${DateFormat('yyyyMMdd').format(overview.endDate)}.csv';
       await Share.shareXFiles(
         [XFile.fromData(bytes, mimeType: 'text/csv', name: fileName)],
         subject: 'Laporan pendapatan laundry',
         text:
-            'Laporan pendapatan ${DateFormat('d MMMM y', 'id_ID').format(selected.start)}'
-            ' - ${DateFormat('d MMMM y', 'id_ID').format(selected.end)}',
+            'Laporan pendapatan ${DateFormat('d MMMM y', 'id_ID').format(overview.startDate)}'
+            ' - ${DateFormat('d MMMM y', 'id_ID').format(overview.endDate)}',
         fileNameOverrides: [fileName],
       );
       if (!mounted) return;
@@ -338,9 +332,9 @@ enum _ReportPeriod {
 
 class _TodayPaymentHero extends StatelessWidget {
   final int amount;
-  final int orderCount;
+  final int paymentCount;
 
-  const _TodayPaymentHero({required this.amount, required this.orderCount});
+  const _TodayPaymentHero({required this.amount, required this.paymentCount});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -368,7 +362,7 @@ class _TodayPaymentHero extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text('$orderCount pesanan dibuat pada periode terpilih',
+            Text('$paymentCount pembayaran dicatat pada periode terpilih',
                 style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
@@ -377,8 +371,9 @@ class _TodayPaymentHero extends StatelessWidget {
 
 class _PaymentTrendChart extends StatelessWidget {
   final List<ReportChartPoint> points;
+  final DateTime endDate;
 
-  const _PaymentTrendChart({required this.points});
+  const _PaymentTrendChart({required this.points, required this.endDate});
 
   @override
   Widget build(BuildContext context) {
@@ -392,6 +387,10 @@ class _PaymentTrendChart extends StatelessWidget {
           children: [
             Text('Tren pembayaran 7 hari',
                 style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              'Berakhir ${DateFormat('d MMM y', 'id_ID').format(endDate)}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 14),
             SizedBox(
               height: 132,
@@ -583,7 +582,7 @@ class _PaymentList extends StatelessWidget {
             ListTile(
               title: Text('${items[index].invoice} • ${items[index].customerName}'),
               subtitle: Text(
-                '${DateFormat('d MMM y, HH:mm', 'id_ID').format((items[index].paidAt ?? DateTime.now()).toLocal())}\n'
+                '${_reportPaymentDateLabel(items[index].paidAt)}\n'
                 '${items[index].method.toUpperCase()} • ${items[index].recorderName ?? 'Pencatat tidak tersedia'}',
               ),
               isThreeLine: true,
@@ -597,6 +596,10 @@ class _PaymentList extends StatelessWidget {
     );
   }
 }
+
+String _reportPaymentDateLabel(DateTime? value) => value == null
+    ? 'Tanggal tidak tersedia'
+    : DateFormat('d MMM y, HH:mm', 'id_ID').format(value.toLocal());
 
 class _OutstandingList extends StatelessWidget {
   final List<OutstandingReportItem> items;

@@ -19,26 +19,22 @@ abstract class AppTheme {
       error: AppColors.error,
       brightness: Brightness.light,
     );
+    final textTheme = AppTextStyles.textTheme;
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.background,
       fontFamily: AppTextStyles.body.fontFamily,
-      textTheme: TextTheme(
-        displayLarge: AppTextStyles.displayLarge,
-        headlineSmall: AppTextStyles.headline,
-        titleMedium: AppTextStyles.title,
-        bodyMedium: AppTextStyles.body,
-        bodySmall: AppTextStyles.bodyMuted,
-        labelLarge: AppTextStyles.label,
-      ),
-      appBarTheme: const AppBarTheme(
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
+        titleTextStyle: textTheme.titleLarge,
+        toolbarTextStyle: textTheme.bodyMedium,
       ),
       cardTheme: CardThemeData(
         color: AppColors.card,
@@ -70,11 +66,13 @@ abstract class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radius),
           ),
+          textStyle: textTheme.labelLarge,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primary,
+          textStyle: textTheme.labelLarge,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -109,22 +107,31 @@ abstract class AppTheme {
         ),
         labelStyle: AppTextStyles.bodyMuted,
       ),
+      listTileTheme: ListTileThemeData(
+        titleTextStyle: textTheme.titleSmall,
+        subtitleTextStyle: textTheme.bodySmall,
+      ),
       dividerTheme: const DividerThemeData(
         color: AppColors.divider,
         thickness: 1,
         space: 1,
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: AppColors.card,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textSecondary,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
+        selectedLabelStyle: textTheme.labelMedium,
+        unselectedLabelStyle: textTheme.labelMedium,
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
+        ),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: AppColors.textOnPrimary,
         ),
       ),
       pageTransitionsTheme: const PageTransitionsTheme(

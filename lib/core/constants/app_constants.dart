@@ -6,7 +6,7 @@ abstract class AppConstants {
 
   /// Ganti sesuai environment backend.
   /// Untuk device fisik, arahkan ke IP LAN komputer yang menjalankan Laravel.
-  static const String baseUrl = 'http://192.168.1.7/api-indafri-laundry/public/api';
+  static const String baseUrl = 'http://192.168.1.40/api-indafri-laundry/public/api';
 
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 15);
@@ -15,6 +15,4 @@ abstract class AppConstants {
   /// (tidak melakukan network call). Set false saat backend siap.
   static const bool useMockApi = false;
 
-  static const String invoicePrefix = 'INV';
-  static const int paperWidthMm = 58;
 }

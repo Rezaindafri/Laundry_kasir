@@ -1,18 +1,3 @@
-class RevenueReport {
-  final int revenue;
-  final int transactionCount;
-
-  const RevenueReport({
-    required this.revenue,
-    required this.transactionCount,
-  });
-
-  factory RevenueReport.fromJson(Map<String, dynamic> json) => RevenueReport(
-        revenue: _asInt(json['revenue']),
-        transactionCount: _asInt(json['transaction_count']),
-      );
-}
-
 class ServiceStatistic {
   final String serviceName;
   final int count;
@@ -24,59 +9,6 @@ class ServiceStatistic {
         serviceName: json['service_name']?.toString() ?? 'Layanan',
         count: _asInt(json['count']),
       );
-}
-
-class ReportStatistics {
-  final int totalRevenue;
-  final int totalTransactions;
-  final int totalCustomers;
-  final int inProgress;
-  final int readyToPickup;
-  final List<ServiceStatistic> services;
-
-  const ReportStatistics({
-    required this.totalRevenue,
-    required this.totalTransactions,
-    required this.totalCustomers,
-    required this.inProgress,
-    required this.readyToPickup,
-    required this.services,
-  });
-
-  factory ReportStatistics.fromJson(Map<String, dynamic> json) {
-    final summary = json['summary'] is Map<String, dynamic>
-        ? Map<String, dynamic>.from(json['summary'] as Map)
-        : <String, dynamic>{};
-    final rawServices =
-        json['services'] is List ? json['services'] as List : [];
-
-    return ReportStatistics(
-      totalRevenue: _asInt(summary['total_revenue']),
-      totalTransactions: _asInt(summary['total_transactions']),
-      totalCustomers: _asInt(summary['total_customers']),
-      inProgress: _asInt(summary['in_progress']),
-      readyToPickup: _asInt(summary['ready_to_pickup']),
-      services: rawServices
-          .whereType<Map>()
-          .map(
-            (item) =>
-                ServiceStatistic.fromJson(Map<String, dynamic>.from(item)),
-          )
-          .toList(),
-    );
-  }
-}
-
-class ReportsOverview {
-  final RevenueReport today;
-  final RevenueReport thisMonth;
-  final ReportStatistics statistics;
-
-  const ReportsOverview({
-    required this.today,
-    required this.thisMonth,
-    required this.statistics,
-  });
 }
 
 class PaymentReportItem {
@@ -153,6 +85,7 @@ class OwnerReportOverview {
   final int paymentsReceived;
   final int outstandingAmount;
   final int orderCount;
+  final int paymentCount;
   final int ordersReceived;
   final int completed;
   final int late;
@@ -174,6 +107,7 @@ class OwnerReportOverview {
     required this.paymentsReceived,
     required this.outstandingAmount,
     required this.orderCount,
+    required this.paymentCount,
     required this.ordersReceived,
     required this.completed,
     required this.late,
@@ -201,6 +135,7 @@ class OwnerReportOverview {
       paymentsReceived: _asInt(summary['payments_received']),
       outstandingAmount: _asInt(summary['outstanding_amount']),
       orderCount: _asInt(summary['order_count']),
+      paymentCount: _asInt(summary['payment_count']),
       ordersReceived: _asInt(operational['orders_received']),
       completed: _asInt(operational['completed']),
       late: _asInt(operational['late']),
@@ -225,21 +160,27 @@ class ReportAccount {
   final String name;
   final String username;
   final bool isActive;
+  final bool isOwner;
 
   const ReportAccount({
     required this.id,
     required this.name,
     required this.username,
     required this.isActive,
+    required this.isOwner,
   });
 
-  String get label => isActive ? name : '$name (Nonaktif)';
+  String get label {
+    if (isOwner) return 'Me (Owner)';
+    return isActive ? name : '$name (Nonaktif)';
+  }
 
   factory ReportAccount.fromJson(Map<String, dynamic> json) => ReportAccount(
         id: json['id']?.toString() ?? '',
         name: json['name']?.toString() ?? 'Kasir',
         username: json['username']?.toString() ?? '',
         isActive: json['is_active'] == true || json['is_active'] == 1,
+        isOwner: json['is_owner'] == true || json['is_owner'] == 1,
       );
 }
 

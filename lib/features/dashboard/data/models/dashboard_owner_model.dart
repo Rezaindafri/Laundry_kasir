@@ -65,15 +65,18 @@ class DashboardOwnerAccount {
   final String name;
   final String username;
   final bool isActive;
+  final bool isOwner;
 
   const DashboardOwnerAccount({
     required this.id,
     required this.name,
     required this.username,
     required this.isActive,
+    required this.isOwner,
   });
 
   String get label {
+    if (isOwner) return 'Me (Owner)';
     final identity = username.isEmpty ? name : '$name (@$username)';
     return isActive ? identity : '$identity (Nonaktif)';
   }
@@ -84,29 +87,24 @@ class DashboardOwnerAccount {
         name: json['name']?.toString() ?? '-',
         username: json['username']?.toString() ?? '',
         isActive: json['is_active'] == true || json['is_active'] == 1,
+        isOwner: json['is_owner'] == true || json['is_owner'] == 1,
       );
 }
 
 class DashboardOwnerResponse {
   final DashboardOwnerSummary summary;
   final List<DashboardChartPoint> chart;
-  final List<String> accountOptions;
   final List<DashboardOwnerAccount> accounts;
   final Map<String, dynamic> insights;
-  final List<String> periodOptions;
   final List<Map<String, dynamic>> paymentDetails;
-  final List<Map<String, dynamic>> orderDetails;
   final List<Map<String, dynamic>> outstandingItems;
 
   const DashboardOwnerResponse({
     required this.summary,
     required this.chart,
-    required this.accountOptions,
     required this.accounts,
     required this.insights,
-    required this.periodOptions,
     required this.paymentDetails,
-    required this.orderDetails,
     required this.outstandingItems,
   });
 
@@ -116,15 +114,6 @@ class DashboardOwnerResponse {
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList();
 
-    final accountOptions = (json['account_options'] as List<dynamic>? ??
-            (json['accountOptions'] as List<dynamic>? ?? const []))
-        .map((item) => item.toString())
-        .toList();
-
-    final periodOptions = (json['period_options'] as List<dynamic>? ??
-            (json['periodOptions'] as List<dynamic>? ?? const []))
-        .map((item) => item.toString())
-        .toList();
     final accounts = (json['accounts'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map((item) => DashboardOwnerAccount.fromJson(
@@ -137,15 +126,9 @@ class DashboardOwnerResponse {
         Map<String, dynamic>.from(json['summary'] as Map? ?? {}),
       ),
       chart: chartJson.map(DashboardChartPoint.fromJson).toList(),
-      accountOptions:
-          accountOptions.isEmpty ? const ['Keseluruhan'] : accountOptions,
       accounts: accounts,
       insights: Map<String, dynamic>.from(json['insights'] as Map? ?? {}),
-      periodOptions: periodOptions.isEmpty
-          ? const ['Minggu ini', 'Bulan ini', 'Tahun']
-          : periodOptions,
       paymentDetails: _objectList(json['payment_details']),
-      orderDetails: _objectList(json['order_details']),
       outstandingItems: _objectList(json['outstanding_items']),
     );
   }

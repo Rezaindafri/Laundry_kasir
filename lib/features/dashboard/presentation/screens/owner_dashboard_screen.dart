@@ -13,6 +13,7 @@ import '../../../master_data/domain/entities/customer_entity.dart';
 import '../../../master_data/presentation/providers/master_data_providers.dart';
 import '../../../transactions/domain/entities/transaction_entity.dart';
 import '../../../transactions/presentation/providers/transaction_providers.dart';
+import '../../../transactions/presentation/screens/transactions_screen.dart';
 import '../../data/models/dashboard_owner_model.dart';
 import '../providers/dashboard_providers.dart';
 import '../widgets/dashboard_shell.dart';
@@ -85,6 +86,14 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
         : (dashboard.insights['customer_names'] as List<dynamic>? ?? const [])
             .map((item) => item.toString())
             .toList();
+    final activeCustomerItems = dashboard == null
+        ? effectiveCustomers
+            .map((customer) => <String, dynamic>{
+                  'id': customer.id,
+                  'name': customer.name,
+                })
+            .toList()
+        : _serverActiveCustomers(dashboard.insights);
     final accounts = dashboard?.accounts ?? const <DashboardOwnerAccount>[];
 
     if (dashboardState.isLoading) {
@@ -146,80 +155,78 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                _PaymentHighlightCard(
+                  value: currency.format(dashboardSummary.revenue),
+                  periodLabel: _selectedPeriod.label,
+                  caption: _selectedPeriod.paymentCaption,
+                  onTap: () => _showFinancialDetails(
+                    context,
+                    title:
+                        'Pembayaran diterima — ${_selectedPeriod.label}',
+                    total: dashboard?.summary.paymentsReceived ?? 0,
+                    items: dashboard?.paymentDetails ?? const [],
+                    isPayment: true,
+                    currency: currency,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 GridView.count(
                   crossAxisCount: crossAxisCount,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
-                  childAspectRatio: 1.35,
+                  childAspectRatio: 1.48,
                   children: [
-                    _KpiCard(
-                      label: 'Pembayaran diterima',
-                      value: currency.format(dashboardSummary.revenue),
-                      trend: dashboardSummary.revenueTrend,
-                      onTap: () => _showFinancialDetails(
-                        context,
-                        title: 'Pembayaran diterima',
-                        total: dashboard?.summary.paymentsReceived ?? 0,
-                        items: dashboard?.paymentDetails ?? const [],
-                        isPayment: true,
-                        currency: currency,
-                      ),
-                    ),
                     _KpiCard(
                       label: 'Transaksi',
                       value: dashboardSummary.transactions.toString(),
                       trend: dashboardSummary.transactionTrend,
-                      onTap: () =>
-                          GoRouter.of(context).push(AppRoutes.transactions),
+                      icon: Icons.receipt_long_outlined,
+                      color: AppColors.primary,
+                      onTap: () => GoRouter.of(context).push(
+                        _transactionRoute(TransactionListFilter.all),
+                      ),
                     ),
                     _KpiCard(
                       label: 'Pelanggan',
                       value: dashboardSummary.customers.toString(),
                       trend: dashboardSummary.customerTrend,
-                      onTap: () =>
-                          GoRouter.of(context).push(AppRoutes.customers),
+                      icon: Icons.people_alt_outlined,
+                      color: const Color(0xFF7C3AED),
+                      onTap: () => _openCustomerDetails(
+                        context,
+                        activeCustomerItems,
+                      ),
                     ),
                     _KpiCard(
                       label: 'Diproses',
                       value: dashboardSummary.processing.toString(),
                       trend: dashboardSummary.processingTrend,
-                      onTap: () =>
-                          GoRouter.of(context).push(AppRoutes.transactions),
+                      icon: Icons.local_laundry_service_outlined,
+                      color: AppColors.statusDicuci,
+                      onTap: () => GoRouter.of(context).push(
+                        _transactionRoute(TransactionListFilter.washing),
+                      ),
+                    ),
+                    _KpiCard(
+                      label: 'Tagihan belum lunas',
+                      value: currency.format(
+                        dashboard?.summary.outstandingAmount ?? 0,
+                      ),
+                      trend: 'Perlu ditinjau',
+                      icon: Icons.account_balance_wallet_outlined,
+                      color: const Color(0xFFB45309),
+                      onTap: () => _showFinancialDetails(
+                        context,
+                        title: 'Tagihan belum lunas',
+                        total: dashboard?.summary.outstandingAmount ?? 0,
+                        items: dashboard?.outstandingItems ?? const [],
+                        isPayment: false,
+                        currency: currency,
+                      ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 10),
-                _FinancialSummaryCard(
-                  label: 'Nilai pesanan',
-                  description: 'Pesanan dibuat pada periode ini',
-                  value: currency.format(dashboard?.summary.orderValue ?? 0),
-                  icon: Icons.receipt_long_outlined,
-                  onTap: () => _showFinancialDetails(
-                    context,
-                    title: 'Nilai pesanan',
-                    total: dashboard?.summary.orderValue ?? 0,
-                    items: dashboard?.orderDetails ?? const [],
-                    isPayment: false,
-                    isOrder: true,
-                    currency: currency,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _FinancialSummaryCard(
-                  label: 'Tagihan belum lunas',
-                  description: 'Sisa tagihan pesanan periode ini',
-                  value: currency.format(dashboard?.summary.outstandingAmount ?? 0),
-                  icon: Icons.account_balance_wallet_outlined,
-                  onTap: () => _showFinancialDetails(
-                    context,
-                    title: 'Tagihan belum lunas',
-                    total: dashboard?.summary.outstandingAmount ?? 0,
-                    items: dashboard?.outstandingItems ?? const [],
-                    isPayment: false,
-                    currency: currency,
-                  ),
                 ),
                 const SizedBox(height: 18),
                 Row(
@@ -284,19 +291,25 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 const SizedBox(height: 14),
                 _SectionCard(
                   title: 'Performa Laundry',
-                  trailing: 'Lihat semua',
+                  trailing: '',
                   child: _LaundryPerformance(distribution: serviceDistribution),
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(
                   title: 'Monitoring Operasional',
                   trailing: 'Lihat detail',
+                  onTrailingTap: () => GoRouter.of(context).push(
+                    _transactionRoute(TransactionListFilter.all),
+                  ),
                   child: _OperationalMonitoring(items: operationalStats),
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(
                   title: 'Yang Perlu Perhatian',
                   trailing: 'Lihat semua',
+                  onTrailingTap: () => GoRouter.of(context).push(
+                    _transactionRoute(TransactionListFilter.all),
+                  ),
                   child: attentionItems.isEmpty
                       ? Text('Tidak ada transaksi yang perlu ditinjau.',
                           style: AppTextStyles.bodyMuted)
@@ -309,67 +322,20 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 const SizedBox(height: 14),
                 _SectionCard(
                   title: 'Layanan Terpopuler',
-                  trailing: 'Detail',
-                  child: _InsightList(items: popularServices),
+                  trailing: '',
+                  child: _PopularServicesCard(items: popularServices),
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(
                   title: 'Pelanggan',
-                  trailing: 'Analitik',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$activeCustomerCount',
-                        style: AppTextStyles.headline.copyWith(fontSize: 30),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'pelanggan aktif',
-                        style: AppTextStyles.bodyMuted,
-                      ),
-                      const SizedBox(height: 12),
-                      if (customerNames.isEmpty)
-                        Text('Belum ada data pelanggan',
-                            style: AppTextStyles.bodyMuted)
-                      else ...[
-                        for (final customer in customerNames)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.secondary,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      customer.trim().isNotEmpty
-                                          ? customer[0].toUpperCase()
-                                          : '?',
-                                      style: AppTextStyles.label.copyWith(
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    customer,
-                                    style: AppTextStyles.body,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ],
+                  trailing: '',
+                  child: _CustomerSummaryCard(
+                    count: activeCustomerCount,
+                    names: customerNames,
+                    onTap: () => _showActiveCustomers(
+                      context,
+                      activeCustomerItems,
+                    ),
                   ),
                 ),
               ],
@@ -461,6 +427,77 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     return 'Keseluruhan';
   }
 
+  String _transactionRoute(TransactionListFilter filter) {
+    final range = _selectedPeriod.dateRange(DateTime.now());
+    return Uri(
+      path: AppRoutes.transactions,
+      queryParameters: {
+        'filter': filter.name,
+        'from': DateUtils.dateOnly(range.start).toIso8601String(),
+        'to': DateUtils.dateOnly(range.end).toIso8601String(),
+        if (_selectedAccountId != 'all') 'cashier_id': _selectedAccountId,
+      },
+    ).toString();
+  }
+
+  Future<void> _showActiveCustomers(
+    BuildContext context,
+    List<Map<String, dynamic>> customers,
+  ) =>
+      showModalBottomSheet<void>(
+        context: context,
+        builder: (sheetContext) => SafeArea(
+          child: DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.55,
+            minChildSize: 0.35,
+            builder: (_, controller) => ListView.separated(
+              controller: controller,
+              padding: const EdgeInsets.all(16),
+              itemCount: customers.length + 1,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, index) {
+                if (index == 0) {
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Pelanggan aktif',
+                      style: Theme.of(sheetContext).textTheme.titleLarge,
+                    ),
+                    subtitle: const Text(
+                      'Memiliki transaksi pada periode dan akun terpilih.',
+                    ),
+                    trailing: Text('${customers.length}'),
+                  );
+                }
+                final customer = customers[index - 1];
+                return ListTile(
+                  leading: CircleAvatar(
+                    child: Text(
+                      (customer['name']?.toString().trim().isNotEmpty ?? false)
+                          ? customer['name'].toString().trim()[0].toUpperCase()
+                          : '?',
+                    ),
+                  ),
+                  title: Text(customer['name']?.toString() ?? 'Pelanggan'),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+  void _openCustomerDetails(
+    BuildContext context,
+    List<Map<String, dynamic>> customers,
+  ) {
+    if (_selectedAccountId == 'all') {
+      GoRouter.of(context).push(AppRoutes.customers);
+      return;
+    }
+    _showActiveCustomers(context, customers);
+  }
+
   Future<void> _showFinancialDetails(
     BuildContext context, {
     required String title,
@@ -524,12 +561,15 @@ String _paymentDateLabel(dynamic value) {
 }
 
 enum _RevenuePeriod {
+  today,
   week,
   month,
   year;
 
   String get label {
     switch (this) {
+      case _RevenuePeriod.today:
+        return 'Hari ini';
       case _RevenuePeriod.week:
         return 'Minggu ini';
       case _RevenuePeriod.month:
@@ -540,6 +580,32 @@ enum _RevenuePeriod {
   }
 
   String get apiValue => name;
+
+  String get paymentCaption => switch (this) {
+        _RevenuePeriod.today => 'Dicatat hari ini',
+        _RevenuePeriod.week => 'Dicatat dalam 7 hari terakhir',
+        _RevenuePeriod.month => 'Dicatat bulan ini',
+        _RevenuePeriod.year => 'Dicatat tahun ini',
+      };
+
+  DateTimeRange dateRange(DateTime now) {
+    final today = DateUtils.dateOnly(now);
+    return switch (this) {
+      _RevenuePeriod.today => DateTimeRange(start: today, end: today),
+      _RevenuePeriod.week => DateTimeRange(
+          start: today.subtract(const Duration(days: 6)),
+          end: today,
+        ),
+      _RevenuePeriod.month => DateTimeRange(
+          start: DateTime(today.year, today.month),
+          end: today,
+        ),
+      _RevenuePeriod.year => DateTimeRange(
+          start: DateTime(today.year),
+          end: today,
+        ),
+    };
+  }
 }
 
 class _DashboardSummary {
@@ -658,6 +724,14 @@ _DashboardSummary _buildDashboardSummary(
 List<_RevenuePoint> _buildRevenueSeries(
     List<TransactionEntity> items, DateTime now, _RevenuePeriod period) {
   switch (period) {
+    case _RevenuePeriod.today:
+      final start = DateTime(now.year, now.month, now.day);
+      final end = start.add(const Duration(days: 1));
+      final revenue = items
+          .where((item) =>
+              !item.createdAt.isBefore(start) && item.createdAt.isBefore(end))
+          .fold<int>(0, (sum, item) => sum + item.paidAmount);
+      return [_RevenuePoint('Hari ini', revenue.toDouble())];
     case _RevenuePeriod.week:
       final series = <_RevenuePoint>[];
       for (var i = 6; i >= 0; i--) {
@@ -700,6 +774,8 @@ List<_RevenuePoint> _buildRevenueSeries(
             DateFormat.MMM('id_ID').format(firstDay).substring(0, 3),
             revenue.toDouble());
       });
+    default:
+      return const <_RevenuePoint>[];
   }
 }
 
@@ -707,6 +783,13 @@ int _revenueForPeriod(
     List<TransactionEntity> items, _RevenuePeriod period, DateTime now,
     {required int offset}) {
   switch (period) {
+    case _RevenuePeriod.today:
+      final date = DateUtils.dateOnly(now).subtract(Duration(days: offset));
+      final end = date.add(const Duration(days: 1));
+      return items
+          .where((item) =>
+              !item.createdAt.isBefore(date) && item.createdAt.isBefore(end))
+          .fold<int>(0, (sum, item) => sum + item.paidAmount);
     case _RevenuePeriod.week:
       final target = now.subtract(Duration(days: 7 * offset));
       return items
@@ -727,6 +810,8 @@ int _revenueForPeriod(
           .where((item) =>
               !item.createdAt.isBefore(start) && !item.createdAt.isAfter(end))
           .fold<int>(0, (sum, item) => sum + item.paidAmount);
+    default:
+      return 0;
   }
 }
 
@@ -734,6 +819,13 @@ int _transactionCountForPeriod(
     List<TransactionEntity> items, _RevenuePeriod period, DateTime now,
     {required int offset}) {
   switch (period) {
+    case _RevenuePeriod.today:
+      final date = DateUtils.dateOnly(now).subtract(Duration(days: offset));
+      final end = date.add(const Duration(days: 1));
+      return items
+          .where((item) =>
+              !item.createdAt.isBefore(date) && item.createdAt.isBefore(end))
+          .length;
     case _RevenuePeriod.week:
       final target = now.subtract(Duration(days: 7 * offset));
       return items
@@ -754,6 +846,8 @@ int _transactionCountForPeriod(
           .where((item) =>
               !item.createdAt.isBefore(start) && !item.createdAt.isAfter(end))
           .length;
+    default:
+      return 0;
   }
 }
 
@@ -801,12 +895,16 @@ class _KpiCard extends StatelessWidget {
   final String label;
   final String value;
   final String trend;
+  final IconData icon;
+  final Color color;
   final VoidCallback onTap;
 
   const _KpiCard({
     required this.label,
     required this.value,
     required this.trend,
+    required this.icon,
+    required this.color,
     required this.onTap,
   });
 
@@ -832,33 +930,42 @@ class _KpiCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: AppTextStyles.bodyMuted),
-            const SizedBox(height: 10),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: AppTextStyles.headline.copyWith(fontSize: 24),
-              ),
-            ),
-            const Spacer(),
             Row(
               children: [
-                const Icon(Icons.trending_up_rounded,
-                    size: 14, color: AppColors.success),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    trend,
-                    style: AppTextStyles.bodyMuted.copyWith(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
+                  child: Icon(icon, size: 19, color: color),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(label,
+                      style: AppTextStyles.bodyMuted,
+                      overflow: TextOverflow.ellipsis),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: FittedBox(
+                alignment: Alignment.centerLeft,
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  style: AppTextStyles.headline.copyWith(fontSize: 26),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              trend,
+              style: AppTextStyles.bodyMuted.copyWith(fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -867,54 +974,99 @@ class _KpiCard extends StatelessWidget {
   }
 }
 
-class _FinancialSummaryCard extends StatelessWidget {
-  final String label;
-  final String description;
+class _PaymentHighlightCard extends StatelessWidget {
   final String value;
-  final IconData icon;
+  final String periodLabel;
+  final String caption;
   final VoidCallback onTap;
 
-  const _FinancialSummaryCard({
-    required this.label,
-    required this.description,
+  const _PaymentHighlightCard({
     required this.value,
-    required this.icon,
+    required this.periodLabel,
+    required this.caption,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.divider),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF0D5EA6), Color(0xFF237DCA)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33237DCA),
+                blurRadius: 14,
+                offset: Offset(0, 6),
+              ),
+            ],
           ),
           child: Row(
             children: [
-              Icon(icon, color: AppColors.primary),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: AppTextStyles.body),
-                    Text(description, style: AppTextStyles.bodyMuted),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Pembayaran diterima',
+                            style: TextStyle(color: Color(0xFFDCEEFF)),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .16),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            periodLabel,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(value,
+                          style: AppTextStyles.headline.copyWith(
+                            color: Colors.white,
+                            fontSize: 30,
+                          )),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(caption,
+                        style: const TextStyle(color: Color(0xFFDCEEFF))),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Text(value,
-                      style: AppTextStyles.title
-                          .copyWith(fontWeight: FontWeight.w700)),
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .16),
+                  borderRadius: BorderRadius.circular(15),
                 ),
+                child: const Icon(Icons.payments_outlined,
+                    color: Colors.white, size: 27),
               ),
             ],
           ),
@@ -925,11 +1077,13 @@ class _FinancialSummaryCard extends StatelessWidget {
 class _SectionCard extends StatelessWidget {
   final String title;
   final String trailing;
+  final VoidCallback? onTrailingTap;
   final Widget child;
 
   const _SectionCard({
     required this.title,
     required this.trailing,
+    this.onTrailingTap,
     required this.child,
   });
 
@@ -950,21 +1104,21 @@ class _SectionCard extends StatelessWidget {
               Expanded(
                 child: Text(title, style: AppTextStyles.title),
               ),
-              TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  minimumSize: Size.zero,
-                  padding: EdgeInsets.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  trailing,
-                  style: AppTextStyles.bodyMuted.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
+              if (trailing.isNotEmpty)
+                InkWell(
+                  onTap: onTrailingTap,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Text(
+                      trailing,
+                      style: AppTextStyles.bodyMuted.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -1395,42 +1549,183 @@ class _AttentionRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded,
-              color: AppColors.textSecondary),
         ],
       ),
     );
   }
 }
 
-class _InsightList extends StatelessWidget {
+class _PopularServicesCard extends StatelessWidget {
   final List<_InsightItem> items;
 
-  const _InsightList({required this.items});
+  const _PopularServicesCard({required this.items});
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return Text('Belum ada data layanan', style: AppTextStyles.bodyMuted);
+      return const _CompactEmptyState(
+        icon: Icons.workspace_premium_outlined,
+        message: 'Belum ada layanan yang dapat diperingkatkan.',
+      );
     }
 
     return Column(
       children: [
-        for (final item in items)
+        for (var index = 0; index < items.length; index++) ...[
           Row(
             children: [
-              Expanded(
-                child: Text(item.label, style: AppTextStyles.body),
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: index == 0
+                      ? const Color(0xFFFFF4D6)
+                      : AppColors.primary.withValues(alpha: .09),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '#${index + 1}',
+                  style: AppTextStyles.label.copyWith(
+                    color: index == 0
+                        ? const Color(0xFFB45309)
+                        : AppColors.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              Text(
-                item.value,
-                style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(items[index].label,
+                    style: AppTextStyles.body.copyWith(
+                        fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.secondary,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(items[index].value,
+                    style: AppTextStyles.label.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                    )),
               ),
             ],
           ),
+          if (index < items.length - 1) const Divider(height: 20),
+        ],
       ],
     );
   }
+}
+
+class _CustomerSummaryCard extends StatelessWidget {
+  final int count;
+  final List<String> names;
+  final VoidCallback onTap;
+
+  const _CustomerSummaryCard({
+    required this.count,
+    required this.names,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (count == 0) {
+      return const _CompactEmptyState(
+        icon: Icons.people_outline,
+        message: 'Belum ada pelanggan aktif pada periode ini.',
+      );
+    }
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Column(
+        children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F9FF),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.groups_2_outlined, color: Color(0xFF0369A1)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Pelanggan aktif', style: AppTextStyles.body),
+              ),
+              Text('$count',
+                  style: AppTextStyles.title.copyWith(
+                    fontSize: 24,
+                    color: const Color(0xFF075985),
+                  )),
+            ],
+          ),
+        ),
+        if (names.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Pelanggan pada periode ini',
+                style: AppTextStyles.bodyMuted),
+          ),
+          const SizedBox(height: 8),
+          for (var index = 0; index < names.length; index++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.secondary,
+                    foregroundColor: AppColors.primary,
+                    child: Text(names[index].trim().isEmpty
+                        ? '?'
+                        : names[index].trim()[0].toUpperCase()),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(names[index],
+                        style: AppTextStyles.body.copyWith(
+                            fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                  const Icon(Icons.circle, size: 8, color: AppColors.success),
+                  const SizedBox(width: 5),
+                  Text('Aktif', style: AppTextStyles.bodyMuted),
+                ],
+              ),
+            ),
+        ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String message;
+
+  const _CompactEmptyState({required this.icon, required this.message});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.textSecondary),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message, style: AppTextStyles.bodyMuted)),
+          ],
+        ),
+      );
 }
 
 class _DonutPainter extends CustomPainter {
@@ -1679,6 +1974,16 @@ List<_InsightItem> _serverPopularServices(Map<String, dynamic> insights) {
             row['label']?.toString() ?? 'Layanan',
             '${(row['count'] as num?)?.toInt() ?? 0}x',
           ))
+      .toList();
+}
+
+List<Map<String, dynamic>> _serverActiveCustomers(
+  Map<String, dynamic> insights,
+) {
+  final rows = insights['active_customer_items'] as List<dynamic>? ?? const [];
+  return rows
+      .whereType<Map>()
+      .map((row) => Map<String, dynamic>.from(row))
       .toList();
 }
 

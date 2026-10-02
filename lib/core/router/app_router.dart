@@ -170,6 +170,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 initialFilter: TransactionListFilterLabel.fromQuery(
                   state.uri.queryParameters['filter'],
                 ),
+                initialDateRange: _transactionDateRange(state),
+                initialCashierId: state.uri.queryParameters['cashier_id'],
               ),
             ),
           ),
@@ -276,3 +278,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+DateTimeRange? _transactionDateRange(GoRouterState state) {
+  final from = DateTime.tryParse(state.uri.queryParameters['from'] ?? '');
+  final to = DateTime.tryParse(state.uri.queryParameters['to'] ?? '');
+  if (from == null || to == null || to.isBefore(from)) return null;
+  return DateTimeRange(start: from, end: to);
+}

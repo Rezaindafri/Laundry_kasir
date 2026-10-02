@@ -46,15 +46,22 @@ class _LoginFormState extends ConsumerState<LoginForm> {
 
     if (!mounted) return;
     setState(() => _isSubmitting = false);
-
     result.when(
       success: (_) {},
       error: (Failure failure) {
-        setState(() => _loginError = failure.message);
-        ScaffoldMessenger.of(context).showSnackBar(
+        setState(() {
+          _loginError = failure.message;
+        });
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        messenger?.hideCurrentSnackBar();
+        messenger?.showSnackBar(
           SnackBar(
-            content: Text(failure.message),
+            content: Text(
+              failure.message,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
           ),
         );
       },
@@ -70,6 +77,37 @@ class _LoginFormState extends ConsumerState<LoginForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_loginError != null) ...[
+            Semantics(
+              liveRegion: true,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: AppColors.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _loginError!,
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           AppTextField(
             controller: _usernameController,
             label: 'Username',
@@ -93,34 +131,9 @@ class _LoginFormState extends ConsumerState<LoginForm> {
               if (value == null || value.isEmpty) {
                 return 'Password wajib diisi';
               }
-              if (value.length < 6) {
-                return 'Password minimal 6 karakter';
-              }
               return null;
             },
           ),
-          if (_loginError != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline, color: AppColors.error),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _loginError!,
-                      style: const TextStyle(color: AppColors.error),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           const SizedBox(height: 4),
           Row(
             children: [

@@ -20,12 +20,18 @@ final reportsOverviewProvider =
 class ReportsOverviewNotifier extends AsyncNotifier<OwnerReportOverview> {
   DateTimeRange? _range;
   String? _cashierId;
+  String? _sessionUserId;
   ReportRemoteDataSource get _remote =>
       ref.read(reportRemoteDataSourceProvider);
 
   @override
   Future<OwnerReportOverview> build() {
-    ref.watch(currentSessionUserIdProvider);
+    final sessionUserId = ref.watch(currentSessionUserIdProvider);
+    if (_sessionUserId != sessionUserId) {
+      _sessionUserId = sessionUserId;
+      _range = null;
+      _cashierId = null;
+    }
     return _load();
   }
 
@@ -44,11 +50,16 @@ class ReportsOverviewNotifier extends AsyncNotifier<OwnerReportOverview> {
     await refresh();
   }
 
-  Future<Uint8List> exportCsv({
-    required DateTime startDate,
-    required DateTime endDate,
-  }) =>
-      _remote.exportCsv(startDate: startDate, endDate: endDate);
+  Future<Uint8List> exportCsv() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final range = _range ?? DateTimeRange(start: today, end: now);
+    return _remote.exportCsv(
+      startDate: range.start,
+      endDate: range.end,
+      cashierId: _cashierId,
+    );
+  }
 
   Future<OwnerReportOverview> _load() async {
     final now = DateTime.now();

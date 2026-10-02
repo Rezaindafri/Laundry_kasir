@@ -65,10 +65,14 @@ extension TransactionListFilterLabel on TransactionListFilter {
 class TransactionsScreen extends ConsumerStatefulWidget {
   final TransactionListFilter initialFilter;
   final bool isCollectionMode;
+  final DateTimeRange? initialDateRange;
+  final String? initialCashierId;
 
   const TransactionsScreen({
     this.initialFilter = TransactionListFilter.all,
     this.isCollectionMode = false,
+    this.initialDateRange,
+    this.initialCashierId,
     super.key,
   });
   static final _currency =
@@ -94,6 +98,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     _filters = widget.initialFilter == TransactionListFilter.all
         ? <TransactionListFilter>{}
         : <TransactionListFilter>{widget.initialFilter};
+    _dateRange = widget.initialDateRange;
     _scrollController.addListener(_onScroll);
     Future.microtask(_loadFirstPage);
   }
@@ -129,6 +134,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       query['active_processing'] = 1;
     }
     if (_searchQuery.trim().isNotEmpty) query['search'] = _searchQuery.trim();
+    if (widget.initialCashierId != null) {
+      query['cashier_id'] = widget.initialCashierId;
+    }
     if (laundryStatuses.isNotEmpty) query['laundry_status'] = laundryStatuses;
     if (paymentStatuses.isNotEmpty) query['payment_status'] = paymentStatuses;
     if (selected.contains(TransactionListFilter.collected) &&
