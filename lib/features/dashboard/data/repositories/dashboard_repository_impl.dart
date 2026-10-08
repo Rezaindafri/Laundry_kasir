@@ -33,6 +33,26 @@ class DashboardRepositoryImpl implements DashboardRepository {
   }
 
   @override
+  Future<Result<OwnerFinancialSnapshot>> getOwnerFinancial({
+    required String period,
+    String? cashierId,
+  }) async {
+    try {
+      final data = await remoteDataSource.getOwnerFinancial(
+        period: period,
+        cashierId: cashierId,
+      );
+      return Success(data);
+    } on ServerException catch (error) {
+      return Error(ServerFailure(error.message));
+    } on UnauthorizedException catch (error) {
+      return Error(UnauthorizedFailure(error.message));
+    } catch (_) {
+      return const Error(UnknownFailure());
+    }
+  }
+
+  @override
   Future<Result<DashboardKasirResponse>> getKasirDashboard() async {
     try {
       final data = await remoteDataSource.getKasirDashboard();

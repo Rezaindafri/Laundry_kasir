@@ -78,6 +78,36 @@ class OutstandingReportItem {
       );
 }
 
+class ExpenseReportItem {
+  final String id;
+  final int amount;
+  final String category;
+  final String? description;
+  final DateTime? occurredAt;
+  final String? recorderName;
+
+  const ExpenseReportItem({
+    required this.id,
+    required this.amount,
+    required this.category,
+    required this.description,
+    required this.occurredAt,
+    required this.recorderName,
+  });
+
+  factory ExpenseReportItem.fromJson(Map<String, dynamic> json) {
+    final recorder = json['recorded_by'];
+    return ExpenseReportItem(
+      id: json['id']?.toString() ?? '',
+      amount: _asInt(json['amount']),
+      category: json['category']?.toString() ?? 'Lainnya',
+      description: json['description']?.toString(),
+      occurredAt: DateTime.tryParse(json['occurred_at']?.toString() ?? ''),
+      recorderName: recorder is Map ? recorder['name']?.toString() : null,
+    );
+  }
+}
+
 class OwnerReportOverview {
   final DateTime startDate;
   final DateTime endDate;
@@ -99,6 +129,10 @@ class OwnerReportOverview {
   final int cashPayments;
   final int qrisPayments;
   final int transferPayments;
+  final int expensesTotal;
+  final int expenseCount;
+  final int netCash;
+  final List<ExpenseReportItem> expenses;
 
   const OwnerReportOverview({
     required this.startDate,
@@ -121,6 +155,10 @@ class OwnerReportOverview {
     required this.cashPayments,
     required this.qrisPayments,
     required this.transferPayments,
+    required this.expensesTotal,
+    required this.expenseCount,
+    required this.netCash,
+    required this.expenses,
   });
 
   factory OwnerReportOverview.fromJson(Map<String, dynamic> json) {
@@ -151,6 +189,10 @@ class OwnerReportOverview {
       cashPayments: _asInt(methods['cash']),
       qrisPayments: _asInt(methods['qris']),
       transferPayments: _asInt(methods['transfer']),
+      expensesTotal: _asInt(summary['expenses_total']),
+      expenseCount: _asInt(summary['expense_count']),
+      netCash: _asInt(summary['net_cash']),
+      expenses: _list(json['expenses']).map(ExpenseReportItem.fromJson).toList(),
     );
   }
 }

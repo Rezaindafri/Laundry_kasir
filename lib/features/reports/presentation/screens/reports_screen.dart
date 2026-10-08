@@ -149,6 +149,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 value: _currency.format(data.outstandingAmount),
                 icon: Icons.account_balance_wallet_outlined,
               ),
+              const SizedBox(height: 10),
+              _ReportCard(
+                label: 'Pengeluaran',
+                subtitle: '${data.expenseCount} catatan pada periode ini',
+                value: _currency.format(data.expensesTotal),
+                icon: Icons.trending_down_outlined,
+              ),
+              const SizedBox(height: 10),
+              _ReportCard(
+                label: 'Arus kas bersih',
+                subtitle: 'Pembayaran diterima dikurangi pengeluaran',
+                value: _currency.format(data.netCash),
+                icon: Icons.account_balance_outlined,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Operasional',
@@ -207,6 +221,21 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
               _PaymentList(items: data.payments),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Rincian pengeluaran',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  TextButton(
+                    onPressed: () => context.push(AppRoutes.expenses),
+                    child: const Text('Kelola'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              _ExpenseList(items: data.expenses),
               const SizedBox(height: 24),
               Text('Tagihan belum lunas',
                   style: Theme.of(context).textTheme.titleMedium),
@@ -636,6 +665,50 @@ class _OutstandingList extends StatelessWidget {
     );
   }
 }
+
+class _ExpenseList extends StatelessWidget {
+  final List<ExpenseReportItem> items;
+
+  const _ExpenseList({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Tidak ada pengeluaran pada periode dan akun ini.'),
+        ),
+      );
+    }
+    return Card(
+      child: Column(
+        children: [
+          for (var index = 0; index < items.length; index++) ...[
+            ListTile(
+              leading: const Icon(Icons.trending_down_outlined),
+              title: Text(items[index].category),
+              subtitle: Text(
+                '${_expenseDateLabel(items[index].occurredAt)}'
+                '${items[index].description?.trim().isNotEmpty == true ? '\n${items[index].description}' : ''}',
+              ),
+              isThreeLine: items[index].description?.trim().isNotEmpty == true,
+              trailing: Text(
+                _ReportsScreenState._currency.format(items[index].amount),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            if (index < items.length - 1) const Divider(height: 1),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _expenseDateLabel(DateTime? value) => value == null
+    ? 'Waktu tidak tersedia'
+    : DateFormat('d MMM y, HH:mm', 'id_ID').format(value.toLocal());
 
 class _ReportRow extends StatelessWidget {
   final IconData icon;

@@ -8,6 +8,10 @@ abstract class DashboardRepository {
     String period,
     String? cashierId,
   });
+  Future<Result<OwnerFinancialSnapshot>> getOwnerFinancial({
+    required String period,
+    String? cashierId,
+  });
   Future<Result<DashboardKasirResponse>> getKasirDashboard();
   Future<Result<DashboardSuperOwnerResponse>> getSuperOwnerDashboard();
 }

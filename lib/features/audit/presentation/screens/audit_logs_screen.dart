@@ -57,6 +57,9 @@ class _AuditEntry {
           ? 'Akun #$subjectId'
           : 'Akun @$username';
     }
+    if (subjectType == 'expense') {
+      return 'Pengeluaran ${snapshot['category']?.toString() ?? '#$subjectId'}';
+    }
     return '$subjectType #$subjectId';
   }
 }
@@ -209,7 +212,9 @@ class _AuditTile extends StatelessWidget {
         onTap: onTap,
         leading: Icon(entry.subjectType == 'transaction'
             ? Icons.receipt_long_outlined
-            : Icons.manage_accounts_outlined),
+            : entry.subjectType == 'expense'
+                ? Icons.trending_down_outlined
+                : Icons.manage_accounts_outlined),
         title: Text(_actionLabel(entry.action)),
         subtitle: Text(
           '${entry.subjectLabel}\n${entry.actor} • ${_dateLabel(entry.createdAt)}',
@@ -293,6 +298,10 @@ List<_AuditChange> _changes(
     'role': 'Role',
     'owner_id': 'Owner penanggung jawab',
     'is_active': 'Status aktif',
+    'amount': 'Nominal',
+    'category': 'Kategori',
+    'description': 'Keterangan',
+    'occurred_at': 'Waktu pengeluaran',
   };
   final keys = {...before.keys, ...after.keys};
   return keys
@@ -330,5 +339,8 @@ String _actionLabel(String action) => switch (action) {
       'user.deleted' => 'Akun dihapus',
       'user.profile_updated' => 'Profil akun diperbarui',
       'user.password_changed' => 'Password akun diubah',
+      'expense.created' => 'Pengeluaran dicatat',
+      'expense.updated' => 'Pengeluaran diperbarui',
+      'expense.deleted' => 'Pengeluaran dihapus',
       _ => action,
     };

@@ -11,6 +11,10 @@ abstract class DashboardRemoteDataSource {
     String period,
     String? cashierId,
   });
+  Future<OwnerFinancialSnapshot> getOwnerFinancial({
+    required String period,
+    String? cashierId,
+  });
   Future<DashboardKasirResponse> getKasirDashboard();
   Future<DashboardSuperOwnerResponse> getSuperOwnerDashboard();
 }
@@ -48,6 +52,36 @@ class DashboardRemoteDataSourceImpl implements DashboardRemoteDataSource {
       throw ServerException(
         error.response?.data?['message']?.toString() ??
             'Gagal mengambil data dashboard owner.',
+        statusCode: error.response?.statusCode,
+      );
+    }
+  }
+
+  @override
+  Future<OwnerFinancialSnapshot> getOwnerFinancial({
+    required String period,
+    String? cashierId,
+  }) async {
+    try {
+      final response = await dio.get(
+        ApiEndpoints.dashboardOwnerFinancial,
+        queryParameters: {
+          'period': period,
+          if (cashierId != null) 'cashier_id': cashierId,
+        },
+        options: Options(headers: {'Accept': 'application/json'}),
+      );
+      final payload = response.data is Map<String, dynamic>
+          ? response.data
+          : <String, dynamic>{};
+      final data = payload['data'] is Map<String, dynamic>
+          ? Map<String, dynamic>.from(payload['data'])
+          : <String, dynamic>{};
+      return OwnerFinancialSnapshot.fromJson(data);
+    } on DioException catch (error) {
+      throw ServerException(
+        error.response?.data?['message']?.toString() ??
+            'Gagal mengambil ringkasan pembayaran.',
         statusCode: error.response?.statusCode,
       );
     }

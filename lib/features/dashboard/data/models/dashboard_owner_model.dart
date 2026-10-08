@@ -8,6 +8,8 @@ class DashboardOwnerSummary {
   final int orderValue;
   final int paymentsReceived;
   final int outstandingAmount;
+  final int expensesTotal;
+  final int expenseCount;
 
   const DashboardOwnerSummary({
     required this.revenue,
@@ -19,6 +21,8 @@ class DashboardOwnerSummary {
     required this.orderValue,
     required this.paymentsReceived,
     required this.outstandingAmount,
+    required this.expensesTotal,
+    required this.expenseCount,
   });
 
   factory DashboardOwnerSummary.fromJson(Map<String, dynamic> json) {
@@ -42,6 +46,8 @@ class DashboardOwnerSummary {
           (json['revenue'] as num?)?.toInt() ??
           0,
       outstandingAmount: (json['outstanding_amount'] as num?)?.toInt() ?? 0,
+      expensesTotal: (json['expenses_total'] as num?)?.toInt() ?? 0,
+      expenseCount: (json['expense_count'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -98,6 +104,7 @@ class DashboardOwnerResponse {
   final Map<String, dynamic> insights;
   final List<Map<String, dynamic>> paymentDetails;
   final List<Map<String, dynamic>> outstandingItems;
+  final List<Map<String, dynamic>> expenseDetails;
 
   const DashboardOwnerResponse({
     required this.summary,
@@ -106,6 +113,7 @@ class DashboardOwnerResponse {
     required this.insights,
     required this.paymentDetails,
     required this.outstandingItems,
+    required this.expenseDetails,
   });
 
   factory DashboardOwnerResponse.fromJson(Map<String, dynamic> json) {
@@ -130,6 +138,40 @@ class DashboardOwnerResponse {
       insights: Map<String, dynamic>.from(json['insights'] as Map? ?? {}),
       paymentDetails: _objectList(json['payment_details']),
       outstandingItems: _objectList(json['outstanding_items']),
+      expenseDetails: _objectList(json['expense_details']),
+    );
+  }
+}
+
+class OwnerFinancialSnapshot {
+  final String period;
+  final int paymentsReceived;
+  final int paymentCount;
+  final List<DashboardChartPoint> chart;
+  final List<Map<String, dynamic>> paymentDetails;
+
+  const OwnerFinancialSnapshot({
+    required this.period,
+    required this.paymentsReceived,
+    required this.paymentCount,
+    required this.chart,
+    required this.paymentDetails,
+  });
+
+  factory OwnerFinancialSnapshot.fromJson(Map<String, dynamic> json) {
+    final summary = Map<String, dynamic>.from(json['summary'] as Map? ?? {});
+    final chart = (json['chart'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => DashboardChartPoint.fromJson(
+              Map<String, dynamic>.from(item),
+            ))
+        .toList();
+    return OwnerFinancialSnapshot(
+      period: json['period']?.toString() ?? 'week',
+      paymentsReceived: (summary['payments_received'] as num?)?.toInt() ?? 0,
+      paymentCount: (summary['payment_count'] as num?)?.toInt() ?? 0,
+      chart: chart,
+      paymentDetails: _objectList(json['payment_details']),
     );
   }
 }

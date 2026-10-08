@@ -1,9 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/providers/auth_providers.dart';
+import '../../features/auth/presentation/providers/splash_intro_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/audit/presentation/screens/audit_logs_screen.dart';
@@ -11,6 +11,7 @@ import '../../features/dashboard/presentation/screens/kasir_dashboard_screen.dar
 import '../../features/dashboard/presentation/screens/owner_dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/super_owner_dashboard_screen.dart';
 import '../../features/dashboard/presentation/widgets/dashboard_shell.dart';
+import '../../features/expenses/presentation/screens/expenses_screen.dart';
 import '../../features/master_data/presentation/screens/customers_screen.dart';
 import '../../features/master_data/presentation/screens/laundry_services_screen.dart';
 import '../../features/reports/presentation/screens/reports_screen.dart';
@@ -36,6 +37,7 @@ abstract class AppRoutes {
   static const reports = '/reports';
   static const users = '/users';
   static const auditLogs = '/audit-logs';
+  static const expenses = '/expenses';
   static const settings = '/settings';
 }
 
@@ -70,11 +72,12 @@ Page<void> _tabPage(GoRouterState state, Widget child) {
 }
 
 /// Menjembatani AsyncNotifier (Riverpod) dengan GoRouter's
-/// refreshListenable, supaya router otomatis redirect setiap kali
-/// sessionProvider berubah (login/logout/auto-login selesai).
+/// refreshListenable, supaya router otomatis redirect saat sesi berubah
+/// atau animasi splash sudah selesai.
 class _SessionRefreshListenable extends ChangeNotifier {
   _SessionRefreshListenable(Ref ref) {
     ref.listen(sessionProvider, (_, __) => notifyListeners());
+    ref.listen(splashIntroCompletedProvider, (_, __) => notifyListeners());
   }
 }
 
@@ -88,6 +91,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final session = ref.read(sessionProvider);
       final isSplash = state.matchedLocation == AppRoutes.splash;
       final isLoggingIn = state.matchedLocation == AppRoutes.login;
+
+      // Beri kesempatan animasi pembuka selesai meski sesi lokal cepat terbaca.
+      if (isSplash && !ref.read(splashIntroCompletedProvider)) {
+        return null;
+      }
 
       // Masih mengecek Auto Login -> tetap di Splash Screen.
       if (session.isLoading) {
@@ -274,6 +282,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ? null
                 : AppRoutes.dashboard,
         builder: (context, state) => const AuditLogsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.expenses,
+        redirect: (context, state) =>
+            ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
+                ? null
+                : AppRoutes.dashboard,
+        builder: (context, state) => const ExpensesScreen(),
       ),
     ],
   );

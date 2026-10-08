@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
@@ -38,6 +39,15 @@ class LaundryApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       routerConfig: router,
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          systemNavigationBarColor: Colors.black,
+          systemNavigationBarIconBrightness: Brightness.light,
+          systemNavigationBarDividerColor: Colors.black,
+          systemNavigationBarContrastEnforced: false,
+        ),
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

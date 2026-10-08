@@ -403,7 +403,7 @@ class _QuickAction extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: primary
                         ? Colors.white
-                        : AppColors.secondary.withValues(alpha: .55),
+                        : AppColors.primarySoft,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: AppColors.primary, size: 26),
@@ -575,7 +575,7 @@ class _Tab extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 7),
             decoration: BoxDecoration(
               color: selected
-                  ? AppColors.secondary.withValues(alpha: .45)
+                  ? AppColors.primarySoft
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(9),
             ),

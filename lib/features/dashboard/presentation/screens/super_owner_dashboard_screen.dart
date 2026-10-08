@@ -134,12 +134,12 @@ class SuperOwnerDashboardScreen extends ConsumerWidget {
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: owner.isActive
-                            ? AppColors.secondary
+                            ? AppColors.profileAvatar
                             : Colors.grey.shade300,
                         child: Icon(
                           Icons.business_outlined,
                           color: owner.isActive
-                              ? AppColors.primary
+                              ? AppColors.profileAvatarText
                               : Colors.grey.shade700,
                         ),
                       ),

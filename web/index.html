@@ -18,21 +18,36 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Aplikasi kasir dan manajemen operasional.">
+  <meta name="theme-color" content="#FFFFFF">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="laundry_management_system">
+  <meta name="apple-mobile-web-app-title" content="KarsaOne">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>laundry_management_system</title>
+  <title>KarsaOne</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { background: #fff; }
+    #boot-splash {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #fff;
+    }
+  </style>
 </head>
 <body>
+  <main id="boot-splash" aria-label="Memuat KarsaOne"></main>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      document.getElementById('boot-splash')?.remove();
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

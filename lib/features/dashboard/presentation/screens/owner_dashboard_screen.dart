@@ -30,7 +30,9 @@ class OwnerDashboardScreen extends ConsumerStatefulWidget {
 
 class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
   _RevenuePeriod _selectedPeriod = _RevenuePeriod.week;
+  _RevenuePeriod _selectedPaymentPeriod = _RevenuePeriod.week;
   String _selectedAccountId = 'all';
+  String? _warmedFinancialAccountId;
 
   @override
   Widget build(BuildContext context) {
@@ -95,6 +97,25 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
             .toList()
         : _serverActiveCustomers(dashboard.insights);
     final accounts = dashboard?.accounts ?? const <DashboardOwnerAccount>[];
+    final cashierId = _selectedAccountId == 'all' ? null : _selectedAccountId;
+    final paymentSnapshot = ref.watch(ownerFinancialProvider(
+      OwnerFinancialRequest(
+        period: _selectedPaymentPeriod.apiValue,
+        cashierId: cashierId,
+      ),
+    ));
+    final revenueSnapshot = ref.watch(ownerFinancialProvider(
+      OwnerFinancialRequest(
+        period: _selectedPeriod.apiValue,
+        cashierId: cashierId,
+      ),
+    ));
+    final displayChartSeries = revenueSnapshot.valueOrNull?.chart
+            .map((item) => _RevenuePoint(item.label, item.value.toDouble()))
+            .toList() ??
+        chartSeries;
+
+    if (dashboard != null) _warmFinancialCache(cashierId);
 
     if (dashboardState.isLoading) {
       return DashboardShell(
@@ -131,6 +152,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
       title: 'Dashboard Owner',
       body: RefreshIndicator(
         onRefresh: () async {
+          _invalidateFinancialSnapshots();
           await ref.read(ownerDashboardProvider.notifier).refresh();
           ref.invalidate(transactionsProvider);
           await ref.read(transactionsProvider.future);
@@ -156,18 +178,40 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 ),
                 const SizedBox(height: 14),
                 _PaymentHighlightCard(
-                  value: currency.format(dashboardSummary.revenue),
-                  periodLabel: _selectedPeriod.label,
-                  caption: _selectedPeriod.paymentCaption,
+                  value: paymentSnapshot.isLoading &&
+                          paymentSnapshot.valueOrNull == null
+                      ? '…'
+                      : currency.format(
+                          paymentSnapshot.valueOrNull?.paymentsReceived ??
+                              dashboardSummary.revenue,
+                        ),
+                  period: _selectedPaymentPeriod,
+                  caption: paymentSnapshot.isLoading
+                      ? 'Menyiapkan data pembayaran...'
+                      : _selectedPaymentPeriod.paymentCaption,
+                  onPeriodChanged: (period) {
+                    setState(() => _selectedPaymentPeriod = period);
+                  },
                   onTap: () => _showFinancialDetails(
                     context,
                     title:
-                        'Pembayaran diterima — ${_selectedPeriod.label}',
-                    total: dashboard?.summary.paymentsReceived ?? 0,
-                    items: dashboard?.paymentDetails ?? const [],
+                        'Pembayaran diterima — ${_selectedPaymentPeriod.label}',
+                    total: paymentSnapshot.valueOrNull?.paymentsReceived ??
+                        dashboard?.summary.paymentsReceived ??
+                        0,
+                    items: paymentSnapshot.valueOrNull?.paymentDetails ??
+                        dashboard?.paymentDetails ??
+                        const [],
                     isPayment: true,
                     currency: currency,
                   ),
+                ),
+                const SizedBox(height: 12),
+                _ExpenseOverviewCard(
+                  total: dashboard?.summary.expensesTotal ?? 0,
+                  count: dashboard?.summary.expenseCount ?? 0,
+                  periodLabel: _RevenuePeriod.week.label,
+                  onTap: () => GoRouter.of(context).push(AppRoutes.expenses),
                 ),
                 const SizedBox(height: 12),
                 GridView.count(
@@ -193,7 +237,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                       value: dashboardSummary.customers.toString(),
                       trend: dashboardSummary.customerTrend,
                       icon: Icons.people_alt_outlined,
-                      color: const Color(0xFF7C3AED),
+                      color: AppColors.secondaryDark,
                       onTap: () => _openCustomerDetails(
                         context,
                         activeCustomerItems,
@@ -245,9 +289,8 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                         children: _RevenuePeriod.values.map((period) {
                           final selected = period == _selectedPeriod;
                           return InkWell(
-                            onTap: () => _applyServerFilters(
-                              period: period,
-                              dashboard: dashboard,
+                            onTap: () => setState(
+                              () => _selectedPeriod = period,
                             ),
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
@@ -283,10 +326,16 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 _SectionCard(
                   title: '',
                   trailing: '',
-                  child: chartSeries.isEmpty ||
-                          chartSeries.every((point) => point.value <= 0)
+                  child: revenueSnapshot.isLoading &&
+                          revenueSnapshot.valueOrNull == null
+                      ? const SizedBox(
+                          height: 180,
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      : displayChartSeries.isEmpty ||
+                          displayChartSeries.every((point) => point.value <= 0)
                       ? _EmptyRevenueState(currency: currency)
-                      : _RevenueChart(points: chartSeries),
+                      : _RevenueChart(points: displayChartSeries),
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(
@@ -403,21 +452,45 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
 
     if (result != null) {
       setState(() => _selectedAccountId = result);
-      await _applyServerFilters(dashboard: dashboard);
+      _invalidateFinancialSnapshots();
+      await _applyAccountFilter();
     }
   }
 
-  Future<void> _applyServerFilters({
-    _RevenuePeriod? period,
-    DashboardOwnerResponse? dashboard,
-  }) async {
-    final selectedPeriod = period ?? _selectedPeriod;
-    if (period != null) setState(() => _selectedPeriod = period);
+  Future<void> _applyAccountFilter() async {
     final cashierId = _selectedAccountId == 'all' ? null : _selectedAccountId;
     await ref.read(ownerDashboardProvider.notifier).applyFilters(
-          period: selectedPeriod.apiValue,
+          period: _RevenuePeriod.week.apiValue,
           cashierId: cashierId,
         );
+  }
+
+  void _warmFinancialCache(String? cashierId) {
+    final accountKey = cashierId ?? 'all';
+    if (_warmedFinancialAccountId == accountKey) return;
+    _warmedFinancialAccountId = accountKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final period in _RevenuePeriod.values) {
+        ref.read(
+          ownerFinancialProvider(
+            OwnerFinancialRequest(period: period.apiValue, cashierId: cashierId),
+          ).future,
+        );
+      }
+    });
+  }
+
+  void _invalidateFinancialSnapshots() {
+    final cashierId = _selectedAccountId == 'all' ? null : _selectedAccountId;
+    for (final period in _RevenuePeriod.values) {
+      ref.invalidate(
+        ownerFinancialProvider(
+          OwnerFinancialRequest(period: period.apiValue, cashierId: cashierId),
+        ),
+      );
+    }
+    _warmedFinancialAccountId = null;
   }
 
   String _selectedAccountLabel(List<DashboardOwnerAccount> accounts) {
@@ -428,7 +501,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
   }
 
   String _transactionRoute(TransactionListFilter filter) {
-    final range = _selectedPeriod.dateRange(DateTime.now());
+    final range = _RevenuePeriod.week.dateRange(DateTime.now());
     return Uri(
       path: AppRoutes.transactions,
       queryParameters: {
@@ -976,14 +1049,16 @@ class _KpiCard extends StatelessWidget {
 
 class _PaymentHighlightCard extends StatelessWidget {
   final String value;
-  final String periodLabel;
+  final _RevenuePeriod period;
   final String caption;
+  final ValueChanged<_RevenuePeriod> onPeriodChanged;
   final VoidCallback onTap;
 
   const _PaymentHighlightCard({
     required this.value,
-    required this.periodLabel,
+    required this.period,
     required this.caption,
+    required this.onPeriodChanged,
     required this.onTap,
   });
 
@@ -997,12 +1072,12 @@ class _PaymentHighlightCard extends StatelessWidget {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF0D5EA6), Color(0xFF237DCA)],
+              colors: [AppColors.primaryDark, AppColors.primary],
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x33237DCA),
+                color: Color(0x330B55F6),
                 blurRadius: 14,
                 offset: Offset(0, 6),
               ),
@@ -1032,7 +1107,7 @@ class _PaymentHighlightCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            periodLabel,
+                            period.label,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -1055,6 +1130,46 @@ class _PaymentHighlightCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(caption,
                         style: const TextStyle(color: Color(0xFFDCEEFF))),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        _RevenuePeriod.today,
+                        _RevenuePeriod.week,
+                        _RevenuePeriod.month,
+                      ].map((option) {
+                        final selected = option == period;
+                        return InkWell(
+                          onTap: () => onPeriodChanged(option),
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: .14),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: .38),
+                              ),
+                            ),
+                            child: Text(
+                              option.label,
+                              style: TextStyle(
+                                color: selected
+                                    ? AppColors.primary
+                                    : Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ],
                 ),
               ),
@@ -1072,6 +1187,72 @@ class _PaymentHighlightCard extends StatelessWidget {
           ),
         ),
       );
+}
+
+class _ExpenseOverviewCard extends StatelessWidget {
+  final int total;
+  final int count;
+  final String periodLabel;
+  final VoidCallback onTap;
+
+  const _ExpenseOverviewCard({
+    required this.total,
+    required this.count,
+    required this.periodLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final currency = NumberFormat.currency(
+      locale: 'id_ID',
+      symbol: 'Rp',
+      decimalDigits: 0,
+    );
+    return Material(
+      color: const Color(0xFFFFF7ED),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFED7AA)),
+          ),
+          child: Row(
+            children: [
+              const CircleAvatar(
+                radius: 19,
+                backgroundColor: Color(0xFFFFEDD5),
+                foregroundColor: Color(0xFFC2410C),
+                child: Icon(Icons.trending_down_outlined),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Pengeluaran $periodLabel', style: AppTextStyles.body),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$count catatan | ${currency.format(total)}',
+                      style: AppTextStyles.bodyMuted.copyWith(
+                        color: const Color(0xFF9A3412),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFFC2410C)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SectionCard extends StatelessWidget {
@@ -1605,7 +1786,7 @@ class _PopularServicesCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.secondary,
+                  color: AppColors.primarySoft,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(items[index].value,
@@ -1650,12 +1831,12 @@ class _CustomerSummaryCard extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0xFFF0F9FF),
+            color: AppColors.primarySoft,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             children: [
-              const Icon(Icons.groups_2_outlined, color: Color(0xFF0369A1)),
+              Icon(Icons.groups_2_outlined, color: AppColors.secondaryDark),
               const SizedBox(width: 10),
               Expanded(
                 child: Text('Pelanggan aktif', style: AppTextStyles.body),
@@ -1663,7 +1844,7 @@ class _CustomerSummaryCard extends StatelessWidget {
               Text('$count',
                   style: AppTextStyles.title.copyWith(
                     fontSize: 24,
-                    color: const Color(0xFF075985),
+                    color: AppColors.secondaryDark,
                   )),
             ],
           ),
@@ -1683,7 +1864,7 @@ class _CustomerSummaryCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 16,
-                    backgroundColor: AppColors.secondary,
+                    backgroundColor: AppColors.primarySoft,
                     foregroundColor: AppColors.primary,
                     child: Text(names[index].trim().isEmpty
                         ? '?'

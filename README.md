@@ -1,4 +1,4 @@
-# Clean Fresh Laundry — Laundry Management System (LMS)
+# KarsaOne
 
 Tahap 1: **Setup Project & Arsitektur Inti**. Fondasi Clean Architecture,
 autentikasi JWT (mock), role-based routing, dan tema Material 3 sudah

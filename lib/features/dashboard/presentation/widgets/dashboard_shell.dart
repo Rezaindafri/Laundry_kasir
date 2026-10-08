@@ -165,35 +165,40 @@ class AppBottomNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _selectedIndex(context);
-    return SafeArea(
-      top: false,
-      child: Container(
-        height: 80,
-        decoration: const BoxDecoration(
-          color: AppColors.card,
-          border: Border(top: BorderSide(color: AppColors.divider)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 5),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: List.generate(_items.length, (index) {
-              final item = _items[index];
-              final isSelected = index == selectedIndex;
-              return Expanded(
-                child: item.route == AppRoutes.qrScanner
-                    ? _QrNavigationItem(
-                        item: item,
-                        isSelected: isSelected,
-                        onTap: () => _onTap(context, item.route),
-                      )
-                    : _NavigationItem(
-                        item: item,
-                        isSelected: isSelected,
-                        onTap: () => _onTap(context, item.route),
-                      ),
-              );
-            }),
+    return ColoredBox(
+      color: Theme.of(context).platform == TargetPlatform.android
+          ? Colors.black
+          : AppColors.card,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          height: 80,
+          decoration: const BoxDecoration(
+            color: AppColors.card,
+            border: Border(top: BorderSide(color: AppColors.divider)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 5),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: List.generate(_items.length, (index) {
+                final item = _items[index];
+                final isSelected = index == selectedIndex;
+                return Expanded(
+                  child: item.route == AppRoutes.qrScanner
+                      ? _QrNavigationItem(
+                          item: item,
+                          isSelected: isSelected,
+                          onTap: () => _onTap(context, item.route),
+                        )
+                      : _NavigationItem(
+                          item: item,
+                          isSelected: isSelected,
+                          onTap: () => _onTap(context, item.route),
+                        ),
+                );
+              }),
+            ),
           ),
         ),
       ),
@@ -226,7 +231,8 @@ class _NavigationItem extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppColors.secondary : Colors.transparent,
+                  color:
+                      isSelected ? AppColors.primarySoft : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -321,6 +327,9 @@ class AppNavigationDrawer extends StatelessWidget {
               const _MenuItem(
                   'Laporan', Icons.bar_chart_outlined, AppRoutes.reports),
             if (role == UserRole.owner)
+              const _MenuItem('Pengeluaran', Icons.trending_down_outlined,
+                  AppRoutes.expenses),
+            if (role == UserRole.owner)
               const _MenuItem('Riwayat Audit', Icons.history_edu_outlined,
                   AppRoutes.auditLogs),
             if (role.canManageUsers)
@@ -341,12 +350,13 @@ class AppNavigationDrawer extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 26,
-                    backgroundColor: AppColors.secondary,
-                    foregroundColor: AppColors.primary,
+                    backgroundColor: AppColors.profileAvatar,
+                    foregroundColor: AppColors.profileAvatarText,
                     child: Text(
                       user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                      style: AppTextStyles.title
-                          .copyWith(color: AppColors.primary),
+                      style: AppTextStyles.title.copyWith(
+                        color: AppColors.profileAvatarText,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 14),

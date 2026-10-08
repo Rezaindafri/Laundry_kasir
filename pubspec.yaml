@@ -1,5 +1,5 @@
 name: laundry_management_system
-description: "Laundry Management System - Aplikasi POS & manajemen laundry profesional."
+description: "KarsaOne — Aplikasi kasir dan manajemen operasional."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -67,3 +67,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/brand/karsaone_logo.png

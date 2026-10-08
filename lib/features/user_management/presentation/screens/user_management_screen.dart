@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../shared/enums/user_role.dart';
 import '../../../auth/domain/entities/user_entity.dart';
@@ -137,7 +138,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             return Card(
               child: ListTile(
                 leading: CircleAvatar(
-                  child: Text(user.name.substring(0, 1).toUpperCase()),
+                  backgroundColor: AppColors.profileAvatar,
+                  foregroundColor: AppColors.profileAvatarText,
+                  child: Text(
+                    user.name.substring(0, 1).toUpperCase(),
+                    style: const TextStyle(color: AppColors.profileAvatarText),
+                  ),
                 ),
                 title: Text(user.name),
                 subtitle:

@@ -24,6 +24,38 @@ final ownerDashboardProvider =
   OwnerDashboardNotifier.new,
 );
 
+class OwnerFinancialRequest {
+  final String period;
+  final String? cashierId;
+
+  const OwnerFinancialRequest({required this.period, this.cashierId});
+
+  @override
+  bool operator ==(Object other) =>
+      other is OwnerFinancialRequest &&
+      other.period == period &&
+      other.cashierId == cashierId;
+
+  @override
+  int get hashCode => Object.hash(period, cashierId);
+}
+
+/// Cache kecil khusus kartu pembayaran dan grafik. Halaman dashboard utama
+/// tidak masuk status loading lagi saat Owner mengganti periode pendapatan.
+final ownerFinancialProvider = FutureProvider.autoDispose
+    .family<OwnerFinancialSnapshot, OwnerFinancialRequest>((ref, request) async {
+  ref.watch(currentSessionUserIdProvider);
+  ref.keepAlive();
+  final result = await ref.read(dashboardRepositoryProvider).getOwnerFinancial(
+        period: request.period,
+        cashierId: request.cashierId,
+      );
+  return result.when(
+    success: (data) => data,
+    error: (failure) => throw failure,
+  );
+});
+
 class OwnerDashboardNotifier extends AsyncNotifier<DashboardOwnerResponse> {
   String _period = 'week';
   String? _cashierId;

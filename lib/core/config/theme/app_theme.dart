@@ -14,7 +14,8 @@ abstract class AppTheme {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       primary: AppColors.primary,
-      secondary: AppColors.secondary,
+      // Keep Material controls visibly blue even though secondary surfaces are white.
+      secondary: AppColors.primary,
       surface: AppColors.card,
       error: AppColors.error,
       brightness: Brightness.light,

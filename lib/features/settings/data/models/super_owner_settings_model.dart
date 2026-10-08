@@ -60,7 +60,8 @@ class SuperOwnerSettings {
             ))
         .toList();
     return SuperOwnerSettings(
-      applicationName: system['application_name']?.toString() ?? 'Laundry App',
+      applicationName:
+          system['application_name']?.toString() ?? 'KarsaOne',
       apiStatus: system['api_status']?.toString() ?? 'unknown',
       serverTime: DateTime.tryParse(system['server_time']?.toString() ?? ''),
       passwordMinLength:

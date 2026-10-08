@@ -34,11 +34,16 @@ abstract class ApiEndpoints {
 
   // Dashboard & Reports
   static const String dashboardOwner = '/dashboard/owner';
+  static const String dashboardOwnerFinancial = '/dashboard/owner/financial';
   static const String dashboardKasir = '/dashboard/kasir';
   static const String dashboardSuperOwner = '/dashboard/super-owner';
   static const String reportsOverview = '/reports/overview';
   static const String reportsExport = '/reports/export';
   static const String auditLogs = '/audit-logs';
+
+  // Owner expenses
+  static const String expenses = '/expenses';
+  static String expenseById(String id) => '/expenses/$id';
 
   // Settings
   static const String settings = '/settings';
