@@ -10,6 +10,7 @@ import 'package:screenshot/screenshot.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../core/utils/business_time.dart';
 import '../../../../shared/enums/user_role.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
@@ -25,6 +26,7 @@ import '../../../settings/presentation/providers/settings_providers.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../../domain/entities/transaction_page_entity.dart';
 import '../providers/transaction_providers.dart';
+import '../widgets/transaction_proof_dialog.dart';
 import '../../../../core/utils/whatsapp_launcher.dart';
 import '../../../../core/utils/whatsapp_receipt_launcher.dart';
 
@@ -149,10 +151,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     }
     final range = _dateRange;
     if (range != null) {
-      query['from'] = DateUtils.dateOnly(range.start).toIso8601String();
-      query['to'] = DateUtils.dateOnly(range.end).toIso8601String();
+      query['from'] = BusinessTime.dateParameter(range.start);
+      query['to'] = BusinessTime.dateParameter(range.end);
     } else if (selected.contains(TransactionListFilter.today)) {
-      final today = DateUtils.dateOnly(DateTime.now()).toIso8601String();
+      final today = BusinessTime.dateParameter(BusinessTime.calendarNow());
       query['from'] = today;
       query['to'] = today;
     }
@@ -369,7 +371,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       ),
     );
   }
-
 }
 
 class _TransactionFilterSelection {
@@ -439,7 +440,7 @@ class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
       context: context,
       initialDateRange: _dateRange,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: BusinessTime.calendarNow(),
       helpText: 'Pilih rentang tanggal transaksi',
       saveText: 'Terapkan',
     );
@@ -643,7 +644,7 @@ class _TransactionCard extends ConsumerWidget {
 
 String _formatEstimateDate(DateTime dateTime) {
   final formatter = DateFormat('dd MMM yyyy, HH:mm', 'id_ID');
-  return formatter.format(dateTime);
+  return '${formatter.format(BusinessTime.wallTime(dateTime))} WIB';
 }
 
 Color _laundryColor(LaundryStatus status) => switch (status) {
@@ -1330,6 +1331,18 @@ class _TransactionDetailScreenState
             ),
           ),
           const SizedBox(height: 16),
+          if (_transaction.hasProofImage) ...[
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) =>
+                    TransactionProofDialog(transactionId: _transaction.id),
+              ),
+              icon: const Icon(Icons.image_outlined),
+              label: const Text('Lihat bukti pengambilan'),
+            ),
+            const SizedBox(height: 12),
+          ],
           FilledButton.icon(
             onPressed: _transaction.customerPhone.isNotEmpty
                 ? () async {
@@ -1907,11 +1920,13 @@ class _ReceiptImage extends StatelessWidget {
               _ReceiptLine(label: 'Pelanggan', value: transaction.customerName),
               _ReceiptLine(
                 label: 'Tanggal masuk',
-                value: _dateTime.format(transaction.createdAt),
+                value:
+                    '${_dateTime.format(BusinessTime.wallTime(transaction.createdAt))} WIB',
               ),
               _ReceiptLine(
                 label: 'Estimasi selesai',
-                value: _dateTime.format(transaction.estimatedFinishAt),
+                value:
+                    '${_dateTime.format(BusinessTime.wallTime(transaction.estimatedFinishAt))} WIB',
               ),
               _ReceiptLine(label: 'Layanan', value: transaction.serviceName),
               _ReceiptLine(

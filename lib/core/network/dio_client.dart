@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -81,7 +82,7 @@ class DioClient {
             }
           }
 
-          final data = error.response?.data;
+          final data = _errorBody(error.response);
           final inactiveAccount = error.response?.statusCode == 403 &&
               data is Map &&
               (data['code'] == 'account_inactive' ||
@@ -121,5 +122,23 @@ class DioClient {
     );
 
     return dio;
+  }
+
+  // Image/CSV downloads use ResponseType.bytes, including for JSON failures.
+  // Decode only JSON error responses so inactive-account handling still works.
+  static dynamic _errorBody(Response<dynamic>? response) {
+    final body = response?.data;
+    if (body is List<int> &&
+        response?.headers
+                .value(Headers.contentTypeHeader)
+                ?.contains('application/json') ==
+            true) {
+      try {
+        return jsonDecode(utf8.decode(body));
+      } on FormatException {
+        return null;
+      }
+    }
+    return body;
   }
 }

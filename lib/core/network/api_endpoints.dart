@@ -31,6 +31,7 @@ abstract class ApiEndpoints {
   static String updateStatus(String id) => '/transactions/$id/status';
   static String payment(String id) => '/transactions/$id/payment';
   static String collection(String id) => '/transactions/$id/collection';
+  static String transactionProof(String id) => '/transactions/$id/proof';
 
   // Dashboard & Reports
   static const String dashboardOwner = '/dashboard/owner';

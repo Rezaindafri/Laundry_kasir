@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/dio_client.dart';
+import '../../../../core/utils/business_time.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/report_remote_datasource.dart';
 import '../../data/models/report_models.dart';
@@ -51,7 +52,7 @@ class ReportsOverviewNotifier extends AsyncNotifier<OwnerReportOverview> {
   }
 
   Future<Uint8List> exportCsv() {
-    final now = DateTime.now();
+    final now = BusinessTime.calendarNow();
     final today = DateTime(now.year, now.month, now.day);
     final range = _range ?? DateTimeRange(start: today, end: now);
     return _remote.exportCsv(
@@ -62,7 +63,7 @@ class ReportsOverviewNotifier extends AsyncNotifier<OwnerReportOverview> {
   }
 
   Future<OwnerReportOverview> _load() async {
-    final now = DateTime.now();
+    final now = BusinessTime.calendarNow();
     final today = DateTime(now.year, now.month, now.day);
     final range = _range ?? DateTimeRange(start: today, end: now);
     return _remote.getOverview(

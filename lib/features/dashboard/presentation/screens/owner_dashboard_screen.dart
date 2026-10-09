@@ -8,6 +8,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/config/theme/app_text_styles.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/business_time.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../master_data/domain/entities/customer_entity.dart';
 import '../../../master_data/presentation/providers/master_data_providers.dart';
@@ -333,9 +334,10 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                           child: Center(child: CircularProgressIndicator()),
                         )
                       : displayChartSeries.isEmpty ||
-                          displayChartSeries.every((point) => point.value <= 0)
-                      ? _EmptyRevenueState(currency: currency)
-                      : _RevenueChart(points: displayChartSeries),
+                              displayChartSeries
+                                  .every((point) => point.value <= 0)
+                          ? _EmptyRevenueState(currency: currency)
+                          : _RevenueChart(points: displayChartSeries),
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(
@@ -474,7 +476,8 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
       for (final period in _RevenuePeriod.values) {
         ref.read(
           ownerFinancialProvider(
-            OwnerFinancialRequest(period: period.apiValue, cashierId: cashierId),
+            OwnerFinancialRequest(
+                period: period.apiValue, cashierId: cashierId),
           ).future,
         );
       }
@@ -501,13 +504,13 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
   }
 
   String _transactionRoute(TransactionListFilter filter) {
-    final range = _RevenuePeriod.week.dateRange(DateTime.now());
+    final range = _RevenuePeriod.week.dateRange(BusinessTime.calendarNow());
     return Uri(
       path: AppRoutes.transactions,
       queryParameters: {
         'filter': filter.name,
-        'from': DateUtils.dateOnly(range.start).toIso8601String(),
-        'to': DateUtils.dateOnly(range.end).toIso8601String(),
+        'from': BusinessTime.dateParameter(range.start),
+        'to': BusinessTime.dateParameter(range.end),
         if (_selectedAccountId != 'all') 'cashier_id': _selectedAccountId,
       },
     ).toString();
@@ -579,7 +582,8 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     required bool isPayment,
     bool isOrder = false,
     required NumberFormat currency,
-  }) => showModalBottomSheet<void>(
+  }) =>
+      showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         builder: (sheetContext) => SafeArea(
@@ -610,7 +614,8 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                         ? (item['total'] as num?)?.toInt() ?? 0
                         : (item['outstanding_amount'] as num?)?.toInt() ?? 0;
                 return ListTile(
-                  title: Text('${item['invoice'] ?? '-'} • ${item['customer_name'] ?? 'Pelanggan'}'),
+                  title: Text(
+                      '${item['invoice'] ?? '-'} • ${item['customer_name'] ?? 'Pelanggan'}'),
                   subtitle: Text(isPayment
                       ? '${item['payment_method']?.toString().toUpperCase() ?? 'CASH'} • ${_paymentDateLabel(item['paid_at'])}'
                       : isOrder
@@ -630,7 +635,7 @@ String _paymentDateLabel(dynamic value) {
   final date = DateTime.tryParse(value?.toString() ?? '');
   return date == null
       ? 'Tanggal tidak tersedia'
-      : DateFormat('d MMM y, HH:mm', 'id_ID').format(date.toLocal());
+      : '${DateFormat('d MMM y, HH:mm', 'id_ID').format(BusinessTime.wallTime(date))} WIB';
 }
 
 enum _RevenuePeriod {
@@ -655,10 +660,10 @@ enum _RevenuePeriod {
   String get apiValue => name;
 
   String get paymentCaption => switch (this) {
-        _RevenuePeriod.today => 'Dicatat hari ini',
-        _RevenuePeriod.week => 'Dicatat dalam 7 hari terakhir',
-        _RevenuePeriod.month => 'Dicatat bulan ini',
-        _RevenuePeriod.year => 'Dicatat tahun ini',
+        _RevenuePeriod.today => 'Dicatat hari ini (WIB)',
+        _RevenuePeriod.week => 'Dicatat dalam 7 hari terakhir (WIB)',
+        _RevenuePeriod.month => 'Dicatat bulan ini (WIB)',
+        _RevenuePeriod.year => 'Dicatat tahun ini (WIB)',
       };
 
   DateTimeRange dateRange(DateTime now) {
@@ -1159,9 +1164,8 @@ class _PaymentHighlightCard extends StatelessWidget {
                             child: Text(
                               option.label,
                               style: TextStyle(
-                                color: selected
-                                    ? AppColors.primary
-                                    : Colors.white,
+                                color:
+                                    selected ? AppColors.primary : Colors.white,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1404,7 +1408,8 @@ class _RevenueChart extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Total: ${currency.format(total)}', style: AppTextStyles.bodyMuted),
+            Text('Total: ${currency.format(total)}',
+                style: AppTextStyles.bodyMuted),
             Text('Tertinggi: ${currency.format(maxValue)}',
                 style: AppTextStyles.bodyMuted),
           ],
@@ -1778,13 +1783,12 @@ class _PopularServicesCard extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(items[index].label,
-                    style: AppTextStyles.body.copyWith(
-                        fontWeight: FontWeight.w600),
+                    style: AppTextStyles.body
+                        .copyWith(fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.primarySoft,
                   borderRadius: BorderRadius.circular(999),
@@ -1828,62 +1832,62 @@ class _CustomerSummaryCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       child: Column(
         children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.primarySoft,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.groups_2_outlined, color: AppColors.secondaryDark),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('Pelanggan aktif', style: AppTextStyles.body),
-              ),
-              Text('$count',
-                  style: AppTextStyles.title.copyWith(
-                    fontSize: 24,
-                    color: AppColors.secondaryDark,
-                  )),
-            ],
-          ),
-        ),
-        if (names.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Pelanggan pada periode ini',
-                style: AppTextStyles.bodyMuted),
-          ),
-          const SizedBox(height: 8),
-          for (var index = 0; index < names.length; index++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppColors.primarySoft,
-                    foregroundColor: AppColors.primary,
-                    child: Text(names[index].trim().isEmpty
-                        ? '?'
-                        : names[index].trim()[0].toUpperCase()),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(names[index],
-                        style: AppTextStyles.body.copyWith(
-                            fontWeight: FontWeight.w600),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  const Icon(Icons.circle, size: 8, color: AppColors.success),
-                  const SizedBox(width: 5),
-                  Text('Aktif', style: AppTextStyles.bodyMuted),
-                ],
-              ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(14),
             ),
-        ],
+            child: Row(
+              children: [
+                Icon(Icons.groups_2_outlined, color: AppColors.secondaryDark),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Pelanggan aktif', style: AppTextStyles.body),
+                ),
+                Text('$count',
+                    style: AppTextStyles.title.copyWith(
+                      fontSize: 24,
+                      color: AppColors.secondaryDark,
+                    )),
+              ],
+            ),
+          ),
+          if (names.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Pelanggan pada periode ini',
+                  style: AppTextStyles.bodyMuted),
+            ),
+            const SizedBox(height: 8),
+            for (var index = 0; index < names.length; index++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: AppColors.primarySoft,
+                      foregroundColor: AppColors.primary,
+                      child: Text(names[index].trim().isEmpty
+                          ? '?'
+                          : names[index].trim()[0].toUpperCase()),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(names[index],
+                          style: AppTextStyles.body
+                              .copyWith(fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    const Icon(Icons.circle, size: 8, color: AppColors.success),
+                    const SizedBox(width: 5),
+                    Text('Aktif', style: AppTextStyles.bodyMuted),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );

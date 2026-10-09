@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/utils/business_time.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
@@ -68,7 +69,8 @@ class ExpensesScreen extends ConsumerWidget {
                         0,
                         (sum, expense) => sum + expense.amount,
                       );
-                      return _ExpenseTotalCard(total: total, count: items.length);
+                      return _ExpenseTotalCard(
+                          total: total, count: items.length);
                     }
                     final expense = items[index - 1];
                     return _ExpenseTile(
@@ -113,7 +115,8 @@ class ExpensesScreen extends ConsumerWidget {
       );
     } on ServerException catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,7 +161,8 @@ class ExpensesScreen extends ConsumerWidget {
       );
     } on ServerException catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -211,7 +215,8 @@ class _ExpenseTotalCard extends StatelessWidget {
                 ],
               ),
             ),
-            Text('$count catatan', style: Theme.of(context).textTheme.bodySmall),
+            Text('$count catatan',
+                style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
       );
@@ -240,7 +245,7 @@ class _ExpenseTile extends StatelessWidget {
           ),
           title: Text(expense.category),
           subtitle: Text(
-            '${DateFormat('d MMM y, HH:mm', 'id_ID').format(expense.occurredAt.toLocal())}'
+            '${DateFormat('d MMM y, HH:mm', 'id_ID').format(BusinessTime.wallTime(expense.occurredAt))} WIB'
             '${expense.description?.trim().isNotEmpty == true ? '\n${expense.description}' : ''}',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -293,7 +298,9 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
     _descriptionController = TextEditingController(
       text: expense?.description ?? '',
     );
-    _occurredAt = expense?.occurredAt.toLocal() ?? DateTime.now();
+    _occurredAt = expense == null
+        ? BusinessTime.calendarNow()
+        : BusinessTime.wallTime(expense.occurredAt);
   }
 
   @override
@@ -317,7 +324,9 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.expense == null ? 'Catat pengeluaran' : 'Ubah pengeluaran',
+                widget.expense == null
+                    ? 'Catat pengeluaran'
+                    : 'Ubah pengeluaran',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
@@ -366,7 +375,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                 onPressed: _pickOccurredAt,
                 icon: const Icon(Icons.event_outlined),
                 label: Text(
-                  'Waktu pengeluaran: ${DateFormat('d MMM y, HH:mm', 'id_ID').format(_occurredAt)}',
+                  'Waktu pengeluaran (WIB): ${DateFormat('d MMM y, HH:mm', 'id_ID').format(_occurredAt)}',
                 ),
               ),
               const SizedBox(height: 18),
@@ -374,7 +383,9 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _submit,
-                  child: Text(widget.expense == null ? 'Simpan pengeluaran' : 'Simpan perubahan'),
+                  child: Text(widget.expense == null
+                      ? 'Simpan pengeluaran'
+                      : 'Simpan perubahan'),
                 ),
               ),
             ],
@@ -389,7 +400,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
       context: context,
       initialDate: _occurredAt,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: BusinessTime.calendarNow().add(const Duration(days: 1)),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
@@ -398,7 +409,8 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
     );
     if (time == null || !mounted) return;
     setState(() {
-      _occurredAt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _occurredAt =
+          DateTime(date.year, date.month, date.day, time.hour, time.minute);
     });
   }
 
@@ -409,7 +421,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
         amount: int.parse(_amountController.text),
         category: _categoryController.text.trim(),
         description: _descriptionController.text,
-        occurredAt: _occurredAt,
+        occurredAt: BusinessTime.utcFromWallTime(_occurredAt),
       ),
     );
   }
@@ -432,7 +444,8 @@ class _ExpenseError extends StatelessWidget {
               const SizedBox(height: 12),
               Text(message, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              OutlinedButton(onPressed: onRetry, child: const Text('Coba lagi')),
+              OutlinedButton(
+                  onPressed: onRetry, child: const Text('Coba lagi')),
             ],
           ),
         ),

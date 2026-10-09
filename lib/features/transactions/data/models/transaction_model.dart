@@ -1,4 +1,4 @@
-﻿import '../../domain/entities/transaction_entity.dart';
+import '../../domain/entities/transaction_entity.dart';
 import 'transaction_detail_model.dart';
 
 class TransactionModel {
@@ -22,6 +22,7 @@ class TransactionModel {
   final DateTime createdAt;
   final DateTime? estimatedFinishAt;
   final List<TransactionDetailModel> details;
+  final bool hasProofImage;
 
   const TransactionModel({
     required this.id,
@@ -44,13 +45,15 @@ class TransactionModel {
     required this.createdAt,
     this.estimatedFinishAt,
     required this.details,
+    this.hasProofImage = false,
   });
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) {
     final detailsSource = json['details'] ??
         json['transaction_details'] ??
         json['transactionDetails'];
-    final detailsJson = detailsSource is List ? detailsSource : const <dynamic>[];
+    final detailsJson =
+        detailsSource is List ? detailsSource : const <dynamic>[];
     final details = detailsJson
         .whereType<Map<String, dynamic>>()
         .map(TransactionDetailModel.fromJson)
@@ -71,9 +74,10 @@ class TransactionModel {
         _readNum(_firstDetailService(json), ['estimation_hours']);
     final estimateUnit = _readString(service, ['estimation_unit']) ??
         _readString(_firstDetailService(json), ['estimation_unit']);
-    final normalizedEstimatedHours = estimateUnit == 'days' && estimatedHours != null
-        ? estimatedHours.round() * 24
-        : estimatedHours?.round();
+    final normalizedEstimatedHours =
+        estimateUnit == 'days' && estimatedHours != null
+            ? estimatedHours.round() * 24
+            : estimatedHours?.round();
 
     return TransactionModel(
       id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
@@ -101,14 +105,16 @@ class TransactionModel {
               firstDetail?.price ??
               0.0)
           .toDouble(),
-      expressFee: (_readNum(json, ['express_fee', 'expressFee']) ?? 0.0)
-          .toDouble(),
-      total: (_readNum(json, ['total', 'grand_total', 'amount', 'total_price']) ??
-              0.0)
-          .toDouble(),
+      expressFee:
+          (_readNum(json, ['express_fee', 'expressFee']) ?? 0.0).toDouble(),
+      total:
+          (_readNum(json, ['total', 'grand_total', 'amount', 'total_price']) ??
+                  0.0)
+              .toDouble(),
       paidAmount: (_readNum(json, ['paid_amount', 'paidAmount']) ??
               ((_readString(json, ['payment_status']) == 'paid')
-                  ? (_readNum(json, ['total', 'grand_total', 'amount', 'total_price']) ??
+                  ? (_readNum(json,
+                          ['total', 'grand_total', 'amount', 'total_price']) ??
                       0.0)
                   : 0.0))
           .toDouble(),
@@ -126,6 +132,9 @@ class TransactionModel {
               ? createdAt.add(Duration(hours: normalizedEstimatedHours))
               : null),
       details: details,
+      hasProofImage: json['has_proof_image'] == true ||
+          (json['has_proof_image'] == null &&
+              (json['proof_image_path']?.toString().isNotEmpty ?? false)),
     );
   }
 
@@ -158,6 +167,7 @@ class TransactionModel {
         createdAt: createdAt,
         estimatedFinishAt: estimatedFinishAt ?? createdAt,
         notes: notes,
+        hasProofImage: hasProofImage,
       );
 
   Map<String, dynamic> toJson({required bool forRequest}) {
@@ -167,7 +177,7 @@ class TransactionModel {
         'payment_status': paymentStatus,
         'payment_method': paymentMethod,
         'paid_amount': paidAmount,
-        'estimated_finish_at': estimatedFinishAt?.toIso8601String(),
+        'estimated_finish_at': estimatedFinishAt?.toUtc().toIso8601String(),
         'notes': notes,
         'services': [
           {
@@ -199,8 +209,9 @@ class TransactionModel {
       'laundry_status': laundryStatus,
       'order_status': _mapOrderStatus(laundryStatus),
       'notes': notes,
-      'created_at': createdAt.toIso8601String(),
-      'estimated_finish_at': estimatedFinishAt?.toIso8601String(),
+      'created_at': createdAt.toUtc().toIso8601String(),
+      'estimated_finish_at': estimatedFinishAt?.toUtc().toIso8601String(),
+      'has_proof_image': hasProofImage,
       'details': details.map((item) => item.toJson()).toList(),
       'transaction_details': details.map((item) => item.toJson()).toList(),
     };
@@ -212,7 +223,8 @@ String? _readString(Map<String, dynamic>? json, List<String> keys) {
   for (final key in keys) {
     final value = json[key];
     if (value is String && value.trim().isNotEmpty) return value;
-    if (value != null && value.toString().trim().isNotEmpty) return value.toString();
+    if (value != null && value.toString().trim().isNotEmpty)
+      return value.toString();
   }
   return null;
 }
@@ -235,7 +247,8 @@ Map<String, dynamic>? _firstDetailService(Map<String, dynamic> json) {
       json['transactionDetails'];
   if (detailsSource is! List) return null;
   for (final item in detailsSource) {
-    if (item is Map<String, dynamic> && item['service'] is Map<String, dynamic>) {
+    if (item is Map<String, dynamic> &&
+        item['service'] is Map<String, dynamic>) {
       return item['service'] as Map<String, dynamic>;
     }
   }

@@ -4,6 +4,7 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 import '../../domain/entities/printer_device.dart';
 import '../../../transactions/domain/entities/transaction_entity.dart';
+import '../../../../core/utils/business_time.dart';
 
 class ThermalReceiptService {
   bool _isPrinting = false;
@@ -15,7 +16,8 @@ class ThermalReceiptService {
   static final _dateTime = DateFormat('dd/MM/yy HH:mm', 'id_ID');
 
   static String buildEstimateSummary(TransactionEntity transaction) {
-    final diff = transaction.estimatedFinishAt.difference(transaction.createdAt);
+    final diff =
+        transaction.estimatedFinishAt.difference(transaction.createdAt);
     final totalHours = diff.inHours;
     if (totalHours <= 0) return 'segera';
 
@@ -82,7 +84,7 @@ class ThermalReceiptService {
       generator.row([
         PosColumn(text: 'Masuk', width: 6),
         PosColumn(
-          text: _dateTime.format(transaction.createdAt),
+          text: _dateTime.format(BusinessTime.wallTime(transaction.createdAt)),
           width: 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
@@ -92,7 +94,8 @@ class ThermalReceiptService {
       generator.row([
         PosColumn(text: 'Estimasi', width: 6),
         PosColumn(
-          text: _dateTime.format(transaction.estimatedFinishAt),
+          text: _dateTime
+              .format(BusinessTime.wallTime(transaction.estimatedFinishAt)),
           width: 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
@@ -102,12 +105,13 @@ class ThermalReceiptService {
       generator.row([
         PosColumn(text: 'Bon', width: 6),
         PosColumn(
-          text: _dateTime.format(printedAt),
+          text: _dateTime.format(BusinessTime.wallTime(printedAt)),
           width: 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]),
     );
+    bytes.addAll(generator.text('Waktu pada bon: WIB'));
     bytes.addAll(generator.hr());
     bytes.addAll(
       generator.row([
@@ -190,7 +194,8 @@ class ThermalReceiptService {
     String paperSize = '58 mm',
   }) async {
     if (_isPrinting) {
-      throw const PrinterException('Proses cetak masih berjalan. Tunggu sebentar.');
+      throw const PrinterException(
+          'Proses cetak masih berjalan. Tunggu sebentar.');
     }
     _isPrinting = true;
     try {

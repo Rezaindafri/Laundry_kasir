@@ -62,6 +62,7 @@ class TransactionEntity extends Equatable {
   final DateTime createdAt;
   final DateTime estimatedFinishAt;
   final String? notes;
+  final bool hasProofImage;
 
   const TransactionEntity({
     required this.id,
@@ -83,6 +84,7 @@ class TransactionEntity extends Equatable {
     required this.createdAt,
     required this.estimatedFinishAt,
     this.notes,
+    this.hasProofImage = false,
   });
 
   int get remainingPayment => total - paidAmount;
@@ -97,6 +99,7 @@ class TransactionEntity extends Equatable {
     PaymentStatus? paymentStatus,
     LaundryStatus? laundryStatus,
     String? notes,
+    bool? hasProofImage,
   }) =>
       TransactionEntity(
         id: id,
@@ -118,6 +121,7 @@ class TransactionEntity extends Equatable {
         createdAt: createdAt,
         estimatedFinishAt: estimatedFinishAt,
         notes: notes ?? this.notes,
+        hasProofImage: hasProofImage ?? this.hasProofImage,
       );
 
   @override
@@ -129,5 +133,6 @@ class TransactionEntity extends Equatable {
         paidAmount,
         paymentStatus,
         laundryStatus,
+        hasProofImage,
       ];
 }

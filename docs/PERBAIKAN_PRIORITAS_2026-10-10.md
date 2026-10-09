@@ -2,6 +2,8 @@
 
 Tanggal: 10 Oktober 2026. Ini hasil implementasi setelah [audit awal](AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md), bukan pengganti bukti diagnostik sebelum perbaikan.
 
+Catatan ini adalah **snapshot tahap pertama**. Kelanjutan WIB/UTC, disk bukti privat dan upgrade tiga dependensi sudah dikerjakan dan diuji pada [catatan tahap kedua](TIMEZONE_BUKTI_DEPENDENSI_2026-10-10.md). Angka tes dan status terbuka di bawah menjelaskan keadaan sebelum tahap kedua; hasil terbaru ada pada README.
+
 ## Yang sudah diubah
 
 | Temuan | Perubahan dan verifikasi | Status / batas |

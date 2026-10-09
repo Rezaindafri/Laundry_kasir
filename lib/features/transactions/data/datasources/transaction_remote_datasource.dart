@@ -20,12 +20,29 @@ abstract class TransactionRemoteDataSource {
     Uint8List? proofImage,
   });
   Future<void> deleteTransaction(String id);
+  Future<Uint8List> downloadProof(String id);
 }
 
 class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   final Dio dio;
 
   const TransactionRemoteDataSourceImpl(this.dio);
+
+  @override
+  Future<Uint8List> downloadProof(String id) async {
+    try {
+      final response = await dio.get<List<int>>(
+        ApiEndpoints.transactionProof(id),
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const []);
+    } on DioException catch (error) {
+      throw ServerException(
+        'Bukti pengambilan tidak tersedia atau akses tidak diizinkan.',
+        statusCode: error.response?.statusCode,
+      );
+    }
+  }
 
   @override
   Future<List<TransactionModel>> getTransactions() async {

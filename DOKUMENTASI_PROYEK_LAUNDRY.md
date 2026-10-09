@@ -36,7 +36,7 @@ lib/
 
 main.dart menyiapkan locale Indonesia, SharedPreferences, ProviderScope dan router. AppConstants.useMockApi bernilai false; mock tersedia untuk pengembangan, bukan sumber data operasional saat audit.
 
-Laravel menggunakan PHP ^8.3, framework ^13.8, Sanctum ^4.0, Eloquent, validasi request, middleware role/status dan query scope owner. Database aplikasi MySQL; audit menggunakan SQLite di memori.
+Laravel menggunakan PHP ^8.3, framework ^13.8 (lockfile kini 13.35.0), Sanctum ^4.0, Eloquent, validasi request, middleware role/status dan query scope owner. Database aplikasi MySQL; audit menggunakan SQLite di memori.
 
 Harga, estimasi, status resmi, laporan dan audit berasal dari Laravel. Cache Flutter mempercepat tampilan, bukan pengganti otorisasi backend.
 
@@ -130,6 +130,7 @@ Pembayaran:
 - “Lunasi Saja” melunasi tanpa mengambil barang; bisa sebelum siap, nonaktif setelah lunas.
 - “Ambil & Lunasi” mengambil barang siap dan melunasi sisa; menjadi “Ambil” jika sudah lunas.
 - Pengambilan sebelum siap ditolak. Foto opsional.
+- File baru disimpan privat; GET `/transactions/{id}/proof` memakai autentikasi, role dan scope Owner. Bukti lama dipertahankan, URL statisnya ditolak melalui aturan server yang perlu diverifikasi pada hosting.
 - Boolean multipart harus sesuai validator Laravel; collection dengan 0/1 diuji.
 
 POST /transactions/{id}/payment menerima **paid_amount kumulatif**, bukan nominal tambahan. Backend mencatat selisih positif sebagai TransactionPayment. Saldo 30.000 → 100.000 menghasilkan event 30.000 dan 70.000.
@@ -152,7 +153,9 @@ Laporan:
 - Nilai pesanan, pembayaran diterima, sisa tagihan, operasional dan pengeluaran.
 - Rincian waktu, transaksi, metode, nominal dan pencatat pembayaran jika tersedia.
 - Menu ke Riwayat Perubahan yang sama; tidak ada halaman audit duplikat.
-- CSV baris pembayaran sesuai query; proteksi formula spreadsheet belum tersedia.
+- CSV baris pembayaran sesuai query; kolom teks dilindungi dari formula spreadsheet dan waktu pembayaran diberi penanda WIB.
+
+Kalender bisnis memakai WIB (Asia/Jakarta), penyimpanan timestamp tetap UTC. Batas hari/pekan/bulan/tahun dikonversi ke UTC sebelum query; Flutter memakai tanggal WIB untuk default periode dan menampilkan jam dengan label WIB. Perhitungan pembayaran tetap mengikuti paid_at. Pengeluaran baru membawa offset UTC eksplisit. Data lama tidak ditulis ulang/ditafsir ulang otomatis.
 
 | Angka | Sumber / waktu |
 | --- | --- |
@@ -220,13 +223,14 @@ Semua path berawalan /api. Izin efektif dari middleware dan controller.
 
 | Fitur | Endpoint | Izin |
 | --- | --- | --- |
-| Login | POST /auth/login | Publik, belum throttle |
+| Login | POST /auth/login | Publik, throttle identitas+IP dan IP |
 | Sesi/profil | POST /auth/logout; GET /auth/me, /profile; PATCH /profile, /profile/password | Login aktif, perubahan sesuai role |
 | Pelanggan | /customers resource | Kasir/Owner baca+tambah; Owner update/hapus |
 | Layanan | /services resource | Kasir/Owner baca; Owner pengelola |
 | Transaksi | /transactions; /transactions/today; /transactions/ready-to-collect | Owner/Kasir, kelompok sendiri |
 | Koreksi/hapus | PUT/PATCH/DELETE /transactions/{id} | Owner, aturan riwayat/pembayaran |
 | Payment/collection | POST /transactions/{id}/payment, /collection, /proof; PATCH /status | Owner/Kasir, kelompok sendiri |
+| Unduh bukti | GET /transactions/{id}/proof | Owner/Kasir aktif, kelompok sendiri; file privat atau legacy terotorisasi |
 | Dashboard | GET /dashboard/kasir, /dashboard/owner, /dashboard/owner/financial | Sesuai role operasional |
 | Laporan | GET /reports/revenue, /reports/statistics, /reports/overview, /reports/export | Owner |
 | Akun | /users; POST /users/{id}/credentials; PATCH /users/{id}/status | Owner/Super Owner sesuai target |
@@ -243,11 +247,11 @@ Sebagian deklarasi role master data menyebut Super Owner, tetapi OwnerScopeServi
 
 Tidak menjalankan migrasi terhadap database aplikasi, reset, seed akun nyata, atau mengubah kredensial/config produksi. PHPUnit menjalankan migrasi fixture pada SQLite :memory: dengan environment testing, DB_URL kosong, cache/session array, queue sync. Upload memakai storage fake.
 
-- Backend normal + 21 tes regresi baru: 71/71 lulus, 452 assertions.
+- Backend normal dan regresi: 78/78 lulus, 529 assertions.
 - Audit tambahan: 13/13 lulus, 105 assertions; sebelumnya 9 gagal.
-- Flutter: 31 lulus; sesi/interceptor/repository/provider, notifikasi login dan modal aksi cepat simpan/tutup/Back.
+- Flutter: 41 lulus; sesi, notifikasi login/modal, kalender WIB, unduh byte dengan Bearer dan dialog bukti.
 - Dart: 0 error, 12 warning lama; pemeriksaan terarah file autentikasi/interceptor/tes perubahan bersih.
-- Composer runtime audit: 14 advisori pada 3 paket; belum upgrade.
+- Composer runtime dan seluruh lockfile: 0 advisori setelah upgrade tiga paket; validasi Composer dan persyaratan platform lokal lolos.
 
 Cara testing aman di README. UI test tidak memakai API nyata; API test tidak memakai database pelanggan asli. Tes injection/upload adalah sampel negatif, bukan penetration test lengkap.
 
@@ -257,13 +261,12 @@ Sudah ditangani dalam kode: logout/revokasi/expiry/rate limit/sesi Flutter, term
 
 Yang masih perlu dilakukan:
 
-1. Selaraskan waktu bisnis WIB dan batas periode tanpa menafsir ulang timestamp data lama.
-2. Download bukti privat/scoped dan upgrade paket runtime terarah.
-3. Express/pembulatan, controller scanner, cache dan atribusi riwayat legacy.
-4. Uji paralel MySQL pada database test terpisah dan E2E perangkat/staging.
-5. Tuntaskan penanganan token/history pada seluruh salinan backend dan verifikasi deployment HTTPS/docroot/env/DB permissions/firewall/cron.
+1. Verifikasi aturan file statis hosting (termasuk Nginx/CDN), serta penolakan URL bukti lama tanpa token. Kode WIB/akses privat/upgrade sudah diuji, bukan bukti hosting sudah terkonfigurasi.
+2. Express/pembulatan, controller scanner, cache settings/rollover dan atribusi riwayat legacy.
+3. Uji paralel MySQL pada database test terpisah dan E2E perangkat/staging.
+4. Tuntaskan penanganan token/history pada seluruh salinan backend dan verifikasi deployment HTTPS/docroot/env/DB permissions/firewall/cron.
 
-[Audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md) memuat bukti sebelum perbaikan. [Penanganan terbaru](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) memuat perubahan, tes dan batas yang masih terbuka.
+[Audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md) dan [tahap pertama](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) adalah snapshot historis. [WIB, bukti dan upgrade](docs/TIMEZONE_BUKTI_DEPENDENSI_2026-10-10.md) memuat kelanjutan terbaru dan batas deployment.
 
 ## 13. Git dan deployment
 

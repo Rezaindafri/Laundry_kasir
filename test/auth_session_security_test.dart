@@ -221,6 +221,32 @@ void main() {
       await _settleEvents();
       expect(events.single.statusCode, 403);
     });
+
+    test('inactive 403 on a byte download also expires its session', () async {
+      client.dio.httpClientAdapter = _ResponseAdapter(403, {
+        'code': 'account_inactive',
+      });
+      await expectLater(
+        client.dio.get('/transactions/1/proof',
+            options: Options(responseType: ResponseType.bytes)),
+        throwsA(isA<DioException>()),
+      );
+      await _settleEvents();
+      expect(events.single.statusCode, 403);
+    });
+
+    test('permission 403 on a byte download does not expire session', () async {
+      client.dio.httpClientAdapter = _ResponseAdapter(403, {
+        'message': 'Akses tidak diizinkan.',
+      });
+      await expectLater(
+        client.dio.get('/transactions/1/proof',
+            options: Options(responseType: ResponseType.bytes)),
+        throwsA(isA<DioException>()),
+      );
+      await _settleEvents();
+      expect(events, isEmpty);
+    });
   });
 
   group('Remembered session verification', () {

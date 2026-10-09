@@ -1,4 +1,4 @@
-﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
@@ -12,12 +12,23 @@ import '../../domain/repositories/transaction_repository.dart';
 
 import 'dart:typed_data';
 
+final transactionRemoteDataSourceProvider =
+    Provider<TransactionRemoteDataSource>(
+  (ref) => TransactionRemoteDataSourceImpl(DioClient().dio),
+);
+
+final transactionProofProvider =
+    FutureProvider.autoDispose.family<Uint8List, String>((ref, id) {
+  ref.watch(currentSessionUserIdProvider);
+  return ref.watch(transactionRemoteDataSourceProvider).downloadProof(id);
+});
+
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   if (AppConstants.useMockApi) {
     return MockTransactionRepository();
   }
   return TransactionRepositoryImpl(
-    remoteDataSource: TransactionRemoteDataSourceImpl(DioClient().dio),
+    remoteDataSource: ref.watch(transactionRemoteDataSourceProvider),
   );
 });
 final transactionsProvider =
@@ -54,8 +65,8 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
             await ref.read(transactionRepositoryProvider).getTransactions();
         refreshed.when(
           success: (items) => state = AsyncData(items),
-          error: (_) => state =
-              AsyncData(<TransactionEntity>[data, ...(state.valueOrNull ?? [])]),
+          error: (_) => state = AsyncData(
+              <TransactionEntity>[data, ...(state.valueOrNull ?? [])]),
         );
       case Error<TransactionEntity>():
         break;
@@ -87,10 +98,10 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
     Uint8List? proofImage,
   }) async {
     final result = await ref.read(transactionRepositoryProvider).collect(
-      transaction: transaction,
-      settlePayment: settlePayment,
-      proofImage: proofImage,
-    );
+          transaction: transaction,
+          settlePayment: settlePayment,
+          proofImage: proofImage,
+        );
     result.when(
       success: (item) {
         final items = <TransactionEntity>[...(state.valueOrNull ?? [])];
@@ -107,9 +118,8 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
     final result = await ref.read(transactionRepositoryProvider).delete(id);
     result.when(
       success: (_) {
-        final items = (state.valueOrNull ?? [])
-            .where((item) => item.id != id)
-            .toList();
+        final items =
+            (state.valueOrNull ?? []).where((item) => item.id != id).toList();
         state = AsyncData(items);
       },
       error: (_) {},

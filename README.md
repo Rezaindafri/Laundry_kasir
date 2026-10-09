@@ -34,6 +34,7 @@ Fitur yang telah terhubung ke Laravel:
 - “Lunasi Saja” tidak mengambil barang; pengambilan melalui endpoint collection, bukti foto opsional.
 - Status berbasis waktu di backend dan scheduler laundry:sync-statuses.
 - Dashboard Owner/Kasir, laporan pembayaran bertanggal, ekspor CSV, filter akun termasuk Me.
+- Periode laporan memakai WIB; timestamp tetap UTC. Bukti pengambilan diakses melalui API berizin, file baru disimpan privat.
 - Pengeluaran Owner dengan tanggal/waktu pilihan dan rincian laporan; belum ada status rencana/dibayar terpisah.
 - Audit perubahan akun, transaksi dan pengeluaran; profil/settings usaha.
 - Backup/restore **konfigurasi usaha**, bukan backup database/transaksi.
@@ -64,11 +65,11 @@ Scheduler terdaftar setiap menit di routes/console.php. Hosting perlu memanggil 
 
 | Pemeriksaan | Hasil |
 | --- | --- |
-| PHPUnit backend + regresi baru | **71 lulus**, 452 assertions, SQLite di memori |
+| PHPUnit backend + regresi baru | **78 lulus**, 529 assertions, SQLite di memori |
 | Tes audit tambahan dengan token login asli | **13/13 lulus**, 105 assertions; sebelumnya 9 kasus gagal |
-| Flutter unit/widget | **31 lulus**, termasuk sesi, login/modal dan respons lama |
-| Analisis Dart, lib + test | 0 error, 12 warning lama; file autentikasi/interceptor/tes perubahan lolos pemeriksaan terarah |
-| Composer audit paket runtime dari lockfile | **14 advisori pada 3 paket**; tidak dilakukan upgrade |
+| Flutter unit/widget | **41 lulus**, termasuk sesi, login/modal, WIB dan bukti berizin |
+| Analisis Dart, lib + test | 0 error, 12 warning lama; tidak berarti semua lint lama sudah dirapikan |
+| Composer audit lockfile (runtime dan seluruh paket) | **0 advisori**, setelah upgrade terarah tiga paket |
 
 Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan data sintetis. Belum ada pengujian end-to-end Flutter → server hosting nyata atau seluruh perangkat.
 
@@ -78,11 +79,11 @@ Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan da
 - Token contoh disanitasi dan fingerprint token terpapar diblokir Sanctum. **Riwayat Git lama belum dibersihkan; tidak mencabut baris token nyata atau merotasi kredensial.**
 - Status `collected` terminal; pembayaran/pengambilan dan scheduler membaca ulang dengan row lock. Retry saldo kumulatif tidak menambah ledger/audit; request paralel MySQL belum diuji.
 - Restore atomik, guard downgrade Owner bertanggungan, pesan error generik dan escape formula CSV sudah diuji di Laravel.
-- Batas tanggal UTC/WIB, file bukti public, cache/atribusi legacy dan konfigurasi hosting masih perlu penanganan.
+- Batas tanggal WIB/UTC serta akses bukti privat/scoped sudah diterapkan. Aturan penolakan URL bukti lama tersedia untuk Apache dan artisan serve; konfigurasi hosting/Nginx, cache dan atribusi legacy masih perlu diverifikasi.
 - Express Flutter belum cocok dengan kontrak harga backend; controller scanner belum dipasang ke widget kamera.
-- Versi paket yang terkunci memerlukan pembaruan keamanan terencana.
+- Laravel 13.35.0, CommonMark 2.10.3 dan Flysystem 3.36.0 sudah terpasang dari lockfile terbaru; audit advisori perlu tetap dijalankan berkala.
 
-Lihat [hasil penanganan terbaru](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) dan [audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md). Tahap keamanan/integritas ini tidak menyelesaikan seluruh temuan atau membuktikan aplikasi siap produksi.
+Lihat [penyelarasan WIB, bukti dan dependensi](docs/TIMEZONE_BUKTI_DEPENDENSI_2026-10-10.md), [penanganan tahap pertama](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) dan [audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md). Tahap ini tidak menyelesaikan seluruh temuan atau membuktikan aplikasi siap produksi.
 
 ## Pengujian aman
 
@@ -121,6 +122,9 @@ composer audit --locked --no-dev --format=json
 - [Dokumentasi teknis terbaru](DOKUMENTASI_PROYEK_LAUNDRY.md).
 - [Audit integrasi dan keamanan](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md).
 - [Penanganan prioritas dan hasil regresi](docs/PERBAIKAN_PRIORITAS_2026-10-10.md).
+- [WIB/UTC, bukti privat, upgrade dan langkah deployment](docs/TIMEZONE_BUKTI_DEPENDENSI_2026-10-10.md).
 - Backend_Needed.md: catatan historis kebutuhan; verifikasi terhadap kode/dokumen terbaru sebelum mengikutinya.
 
 .gitignore diperluas pada kedua repositori untuk varian .env, kunci privat/signing, konfigurasi HTTP privat, cache/log dan backup lokal. Lockfile dependensi, source, migrasi, aset aplikasi dan tes tetap disimpan di Git. Ignore tidak menghapus file yang telanjur tracked.
+
+Aturan ignore backend `api-indafri-laundry` sudah diverifikasi untuk env, vendor, bukti privat/public, log, SQLite dan dump SQL. `.env` nyata tidak tracked di kedua repo; `api_test.http` backend masih tracked dan history lamanya perlu penanganan terkoordinasi. Tidak menghapus data atau mengubah indeks/history Git pada tahap ini.

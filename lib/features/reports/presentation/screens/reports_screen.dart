@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/utils/business_time.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../data/models/report_models.dart';
@@ -84,6 +85,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     )
                     .toList(),
               ),
+              Text('Periode dan waktu laporan menggunakan WIB (UTC+7).',
+                  style: Theme.of(context).textTheme.bodySmall),
               if (data.accounts.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 Text('User / Kasir',
@@ -258,7 +261,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       )
                     : const Icon(Icons.file_download_outlined),
                 label: Text(
-                  _isExporting ? 'Menyiapkan CSV...' : 'Export CSV periode aktif',
+                  _isExporting
+                      ? 'Menyiapkan CSV...'
+                      : 'Export CSV periode aktif',
                 ),
               ),
             ],
@@ -273,7 +278,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       : 'Tidak dapat memuat laporan. Periksa koneksi lalu coba lagi.';
 
   Future<void> _selectRange() async {
-    final now = DateTime.now();
+    final now = BusinessTime.calendarNow();
     final selected = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
@@ -292,14 +297,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   Future<void> _applyPeriod(_ReportPeriod period) async {
     if (period == _ReportPeriod.custom) return;
-    final now = DateTime.now();
+    final now = BusinessTime.calendarNow();
     final today = DateTime(now.year, now.month, now.day);
     final range = switch (period) {
       _ReportPeriod.today => DateTimeRange(start: today, end: now),
-      _ReportPeriod.week => DateTimeRange(
-          start: today.subtract(const Duration(days: 6)), end: now),
-      _ReportPeriod.month => DateTimeRange(
-          start: DateTime(now.year, now.month), end: now),
+      _ReportPeriod.week =>
+        DateTimeRange(start: today.subtract(const Duration(days: 6)), end: now),
+      _ReportPeriod.month =>
+        DateTimeRange(start: DateTime(now.year, now.month), end: now),
       _ReportPeriod.custom => throw StateError('Periode kustom dipilih'),
     };
     setState(() => _selectedPeriod = period);
@@ -446,7 +451,8 @@ class _PaymentTrendChart extends StatelessWidget {
                                             height: point.value == 0
                                                 ? 4
                                                 : 8 +
-                                                    (constraints.maxHeight - 8) *
+                                                    (constraints.maxHeight -
+                                                            8) *
                                                         point.value /
                                                         maximum,
                                             decoration: BoxDecoration(
@@ -609,13 +615,15 @@ class _PaymentList extends StatelessWidget {
         children: [
           for (var index = 0; index < items.length; index++) ...[
             ListTile(
-              title: Text('${items[index].invoice} • ${items[index].customerName}'),
+              title: Text(
+                  '${items[index].invoice} • ${items[index].customerName}'),
               subtitle: Text(
                 '${_reportPaymentDateLabel(items[index].paidAt)}\n'
                 '${items[index].method.toUpperCase()} • ${items[index].recorderName ?? 'Pencatat tidak tersedia'}',
               ),
               isThreeLine: true,
-              trailing: Text(_ReportsScreenState._currency.format(items[index].amount),
+              trailing: Text(
+                  _ReportsScreenState._currency.format(items[index].amount),
                   style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
             if (index < items.length - 1) const Divider(height: 1),
@@ -628,7 +636,7 @@ class _PaymentList extends StatelessWidget {
 
 String _reportPaymentDateLabel(DateTime? value) => value == null
     ? 'Tanggal tidak tersedia'
-    : DateFormat('d MMM y, HH:mm', 'id_ID').format(value.toLocal());
+    : '${DateFormat('d MMM y, HH:mm', 'id_ID').format(BusinessTime.wallTime(value))} WIB';
 
 class _OutstandingList extends StatelessWidget {
   final List<OutstandingReportItem> items;
@@ -650,12 +658,15 @@ class _OutstandingList extends StatelessWidget {
         children: [
           for (var index = 0; index < items.length; index++) ...[
             ListTile(
-              title: Text('${items[index].invoice} • ${items[index].customerName}'),
+              title: Text(
+                  '${items[index].invoice} • ${items[index].customerName}'),
               subtitle: Text(
                 'Total ${_ReportsScreenState._currency.format(items[index].total)} • '
                 'Sudah dibayar ${_ReportsScreenState._currency.format(items[index].paid)}',
               ),
-              trailing: Text(_ReportsScreenState._currency.format(items[index].outstanding),
+              trailing: Text(
+                  _ReportsScreenState._currency
+                      .format(items[index].outstanding),
                   style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
             if (index < items.length - 1) const Divider(height: 1),
@@ -708,7 +719,7 @@ class _ExpenseList extends StatelessWidget {
 
 String _expenseDateLabel(DateTime? value) => value == null
     ? 'Waktu tidak tersedia'
-    : DateFormat('d MMM y, HH:mm', 'id_ID').format(value.toLocal());
+    : '${DateFormat('d MMM y, HH:mm', 'id_ID').format(BusinessTime.wallTime(value))} WIB';
 
 class _ReportRow extends StatelessWidget {
   final IconData icon;

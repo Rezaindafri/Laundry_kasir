@@ -50,7 +50,7 @@ class ExpenseInput {
       'description': trimmedDescription == null || trimmedDescription.isEmpty
           ? null
           : trimmedDescription,
-      'occurred_at': occurredAt.toIso8601String(),
+      'occurred_at': occurredAt.toUtc().toIso8601String(),
     };
   }
 }
