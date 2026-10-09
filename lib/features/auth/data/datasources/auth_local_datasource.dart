@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
@@ -50,6 +51,14 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
         value: jsonEncode(user.toJson()),
       );
       await sharedPreferences.setBool(StorageKeys.rememberLogin, rememberMe);
+      if (rememberMe) {
+        await sharedPreferences.setString(
+          StorageKeys.rememberLoginExpiresAt,
+          _newRememberLoginExpiry().toIso8601String(),
+        );
+      } else {
+        await sharedPreferences.remove(StorageKeys.rememberLoginExpiresAt);
+      }
     } catch (_) {
       throw const CacheException('Gagal menyimpan sesi login.');
     }
@@ -85,7 +94,36 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<bool> isRememberLoginEnabled() async {
-    return sharedPreferences.getBool(StorageKeys.rememberLogin) ?? false;
+    try {
+      final rememberMe =
+          sharedPreferences.getBool(StorageKeys.rememberLogin) ?? false;
+      if (!rememberMe) return false;
+
+      final rawExpiresAt =
+          sharedPreferences.getString(StorageKeys.rememberLoginExpiresAt);
+
+      // Sesi lama belum memiliki tanggal kedaluwarsa. Beri masa transisi
+      // 30 hari sejak aplikasi pertama kali membaca sesi tersebut.
+      if (rawExpiresAt == null) {
+        await sharedPreferences.setString(
+          StorageKeys.rememberLoginExpiresAt,
+          _newRememberLoginExpiry().toIso8601String(),
+        );
+        return true;
+      }
+
+      final expiresAt = DateTime.tryParse(rawExpiresAt)?.toUtc();
+      final hasExpired = expiresAt == null ||
+          !DateTime.now().toUtc().isBefore(expiresAt);
+      if (hasExpired) {
+        await clearSession();
+        return false;
+      }
+
+      return true;
+    } catch (_) {
+      throw const CacheException('Gagal memeriksa masa berlaku sesi login.');
+    }
   }
 
   @override
@@ -94,5 +132,9 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     await secureStorage.delete(key: StorageKeys.refreshToken);
     await secureStorage.delete(key: StorageKeys.currentUser);
     await sharedPreferences.remove(StorageKeys.rememberLogin);
+    await sharedPreferences.remove(StorageKeys.rememberLoginExpiresAt);
   }
+
+  DateTime _newRememberLoginExpiry() =>
+      DateTime.now().toUtc().add(AppConstants.rememberLoginDuration);
 }

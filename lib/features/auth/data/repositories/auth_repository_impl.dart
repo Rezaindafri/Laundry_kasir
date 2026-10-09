@@ -40,11 +40,31 @@ class AuthRepositoryImpl implements AuthRepository {
 
       return Success(response.user.toEntity());
     } on ServerException catch (e) {
-      return Error(ServerFailure(e.message));
-    } on CacheException catch (e) {
-      return Error(CacheFailure(e.message));
+      if (e.statusCode == 401) {
+        return const Error(
+          UnauthorizedFailure('Username atau password salah.'),
+        );
+      }
+      if (e.statusCode == 403 &&
+          e.message.toLowerCase().contains('dinonaktifkan')) {
+        return const Error(ServerFailure('Akun dinonaktifkan.'));
+      }
+      if (e.statusCode == 429) {
+        return const Error(
+          ServerFailure('Terlalu banyak percobaan login. Coba lagi sebentar.'),
+        );
+      }
+      return const Error(
+        ServerFailure('Terjadi kesalahan, coba lagi nanti.'),
+      );
+    } on CacheException {
+      return const Error(
+        CacheFailure('Terjadi kesalahan, coba lagi nanti.'),
+      );
     } catch (_) {
-      return const Error(UnknownFailure());
+      return const Error(
+        UnknownFailure('Terjadi kesalahan, coba lagi nanti.'),
+      );
     }
   }
 
@@ -66,10 +86,39 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<Result<UserEntity?>> getCurrentUser() async {
     try {
       final rememberMe = await localDataSource.isRememberLoginEnabled();
-      if (!rememberMe) return const Success(null);
+      if (!rememberMe) {
+        await localDataSource.clearSession();
+        return const Success(null);
+      }
 
       final user = await localDataSource.getSavedUser();
-      return Success(user?.toEntity());
+      final token = await localDataSource.getAccessToken();
+      if (user == null || token == null) {
+        await localDataSource.clearSession();
+        return const Success(null);
+      }
+      if (remoteDataSource is AuthRemoteDataSourceMock) {
+        return Success(user.toEntity());
+      }
+
+      // Local role/name are a cache, not proof the session is still valid.
+      final verified = await remoteDataSource.getCurrentUser();
+      // An API rejection while /me is in flight must not be undone by its
+      // late success response. Never trust or persist another token's user.
+      if (await localDataSource.getAccessToken() != token) {
+        return const Success(null);
+      }
+      await localDataSource.updateSavedUser(verified);
+      if (await localDataSource.getAccessToken() != token) {
+        return const Success(null);
+      }
+      return Success(verified.toEntity());
+    } on ServerException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await localDataSource.clearSession();
+        return const Success(null);
+      }
+      return const Error(ServerFailure('Sesi tidak dapat diverifikasi.'));
     } on CacheException catch (e) {
       return Error(CacheFailure(e.message));
     } catch (_) {
@@ -79,8 +128,7 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<bool> hasActiveSession() async {
-    final token = await localDataSource.getAccessToken();
-    final rememberMe = await localDataSource.isRememberLoginEnabled();
-    return token != null && rememberMe;
+    final result = await getCurrentUser();
+    return result.when(success: (user) => user != null, error: (_) => false);
   }
 }

@@ -78,6 +78,7 @@ class _SessionRefreshListenable extends ChangeNotifier {
   _SessionRefreshListenable(Ref ref) {
     ref.listen(sessionProvider, (_, __) => notifyListeners());
     ref.listen(splashIntroCompletedProvider, (_, __) => notifyListeners());
+    ref.listen(logoutInProgressProvider, (_, __) => notifyListeners());
   }
 }
 
@@ -91,6 +92,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final session = ref.read(sessionProvider);
       final isSplash = state.matchedLocation == AppRoutes.splash;
       final isLoggingIn = state.matchedLocation == AppRoutes.login;
+      final isLoggingOut = ref.read(logoutInProgressProvider);
+
+      // Logout selalu melewati splash dan tetap di sana sampai sesi lokal
+      // selesai dibersihkan, walaupun animasi lebih cepat selesai.
+      if (isLoggingOut) {
+        return isSplash ? null : AppRoutes.splash;
+      }
 
       // Beri kesempatan animasi pembuka selesai meski sesi lokal cepat terbaca.
       if (isSplash && !ref.read(splashIntroCompletedProvider)) {

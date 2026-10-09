@@ -13,8 +13,8 @@ abstract class AuthRepository {
 
   Future<Result<void>> logout();
 
-  /// Mengembalikan user yang tersimpan secara lokal (session aktif),
-  /// null jika belum pernah login / sesi habis.
+  /// Validates a remembered session with Laravel and returns current account
+  /// data; null if no remembered session remains. Development mock is local.
   Future<Result<UserEntity?>> getCurrentUser();
 
   Future<bool> hasActiveSession();

@@ -10,5 +10,6 @@ abstract class StorageKeys {
 
   // Shared preferences (non-sensitif)
   static const String rememberLogin = 'remember_login';
+  static const String rememberLoginExpiresAt = 'remember_login_expires_at';
   static const String defaultPrinterName = 'default_printer_name';
 }

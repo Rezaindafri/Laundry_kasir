@@ -1,1264 +1,276 @@
-# Dokumentasi Proyek Laundry Management System
+# Dokumentasi Proyek KarsaOne
 
-## 1. Gambaran Umum Proyek
+Pembaruan: **10 Oktober 2026**, berdasarkan kode Flutter/Laravel dan pengujian 9–10 Oktober. Nama file historis dipertahankan agar tautan lama tetap berlaku.
 
-Proyek ini adalah aplikasi manajemen laundry berbasis mobile Flutter yang didesain untuk membantu operasional bisnis laundry, mulai dari:
+## 1. Produk dan batas cakupan
 
-- autentikasi pengguna
-- data pelanggan
-- data layanan laundry
-- pencatatan transaksi
-- status laundry
-- pembayaran
-- laporan dan administrasi
-- pencetakan bon/struk
-- scan QR transaksi
-- pengaturan printer dan profil pengguna
+KarsaOne adalah aplikasi kasir/manajemen operasional. Alur layanan saat ini masih laundry; branding baru tidak mengganti isi database, nama tabel, paket aplikasi atau autentikasi.
 
-Aplikasi ini dibangun dengan pendekatan Clean Architecture di sisi frontend, sedangkan backend menggunakan Laravel dengan autentikasi Sanctum dan API REST.
+Frontend: C:\Android\ProjekOM\laundry_app.
+Backend: D:\laragon\www\api-indafri-laundry.
 
-Project frontend berada di folder:
+Dokumentasi ini menggantikan keterangan lama “JWT mock”, dashboard dummy, Super Owner memantau semua transaksi, dan pendapatan hanya saldo kumulatif paid_amount. Keterangan itu tidak menggambarkan implementasi sekarang.
 
-- `laundry_app/`
+Integrasi utama tersedia dan beberapa alur diuji, tetapi **bukan jaminan bebas bug atau siap produksi**. Temuan terbuka ada pada bagian 12 dan laporan audit.
 
-Backend Laravel berada pada:
+## 2. Arsitektur dan sumber kebenaran
 
-- `D:\laragon\www\api-indafri-laundry`
+Flutter menggunakan Riverpod, GoRouter, Dio, Material 3, serta pola per fitur data/domain/presentation.
 
----
+~~~text
+lib/
+  core/          konfigurasi, tema, router, jaringan, error, util
+  shared/        enum role, widget umum
+  features/
+    auth/        sesi, login, logout, splash
+    dashboard/   dashboard tiga role
+    master_data/ pelanggan dan layanan
+    transactions/ transaksi, pembayaran, pengambilan, scanner
+    reports/     laporan dan export
+    expenses/    pengeluaran Owner
+    audit/       riwayat perubahan
+    user_management/ struktur akun
+    settings/    profil, usaha, kebijakan sistem, cache perangkat
+    printing/    bon ESC/POS dan printer
+~~~
 
-## 2. Status Proyek Saat Ini
+main.dart menyiapkan locale Indonesia, SharedPreferences, ProviderScope dan router. AppConstants.useMockApi bernilai false; mock tersedia untuk pengembangan, bukan sumber data operasional saat audit.
 
-Per 14 September 2026, proyek sudah memasuki fase integrasi backend yang stabil untuk alur utama operasional laundry. Struktur aplikasi tidak lagi berbasis mock-only untuk transaksi dan dashboard operasional utama, meskipun fallback mock tetap tersedia untuk kebutuhan pengembangan dan pengujian.
+Laravel menggunakan PHP ^8.3, framework ^13.8, Sanctum ^4.0, Eloquent, validasi request, middleware role/status dan query scope owner. Database aplikasi MySQL; audit menggunakan SQLite di memori.
 
-Beberapa indikator status saat ini:
+Harga, estimasi, status resmi, laporan dan audit berasal dari Laravel. Cache Flutter mempercepat tampilan, bukan pengganti otorisasi backend.
 
-- Autentikasi login dan session pengguna melalui Laravel Sanctum sudah berjalan dan tervalidasi.
-- Data pelanggan dan layanan sudah berjalan dari frontend ke API backend.
-- Transaksi sudah terintegrasi ke backend dengan alur pembayaran yang benar.
-- Dashboard owner sudah menghitung pendapatan dari nilai `paid_amount` yang benar, bukan dari asumsi UI.
-- Router dan role-based access sudah dibuat untuk role owner, kasir, dan super owner.
-- UI untuk transaksi, pelanggan, layanan, dashboard, scan QR, dan printer sudah dibangun dan berkembang sesuai kebutuhan operasional.
-- Backend menyertakan endpoint dasar CRUD untuk customer, service, transaction, serta dashboard owner/kasir.
-- Masalah kontradiksi antara status pembayaran dan pendapatan dashboard sudah diperbaiki dan divalidasi dengan test Laravel.
+## 3. Role dan isolasi kelompok
 
-### Pembaruan teknis terbaru (14 September 2026)
+| Peran | Tanggung jawab | Batas akses |
+| --- | --- | --- |
+| Kasir / User | Pelanggan/transaksi; pembayaran/pengambilan; dashboard operasional, bon | Kelompok Owner sendiri; tidak mengelola akun atau mengganti username/password sendiri |
+| Owner | Operasional kelompoknya, layanan/pelanggan, akun kasir, monitoring, laporan, pengeluaran, riwayat dan informasi usaha | Tidak membaca/mengubah kelompok Owner lain |
+| Super Owner | Owner/Kasir, penetapan/pemindahan kasir, aktivasi akun, kebijakan dan konfigurasi sistem | Dashboard struktur akun, bukan transaksi, omzet atau kinerja harian |
 
-Revisi yang sudah diterapkan meliputi:
+users.owner_id mengaitkan kasir ke Owner. Data operasional memakai scope kepemilikan. OwnerScopeService menolak role operasional yang tidak sesuai dan kasir dengan Owner tidak aktif.
 
-- koreksi login backend: akun aktif/non-aktif dipastikan sesuai kolom `is_active` di database, dan bug migrasi/kolom yang belum ada sudah diperbaiki
-- sinkronisasi status pembayaran dan laundry: `payment_status` mendukung `unpaid`, `downPayment`, dan `paid`; `laundry_status` menerima `late` dan status pengambilan yang konsisten
-- finalisasi kontrak transaksi untuk dashboard owner dan kasir agar pendapatan mengikuti `paid_amount` yang benar-benar ada di backend
-- implementasi endpoint profil pengguna: `GET /api/profile`, `PATCH /api/profile`, dan `PATCH /api/profile/password`
-- implementasi upload bukti pengambilan: `POST /api/transactions/{id}/proof` dengan penyimpanan file ke storage public
-- implementasi export laporan CSV: `GET /api/reports/export?type=csv&start_date=...&end_date=...`
-- validasi regresi Laravel untuk auth, status transaksi, profil, upload bukti, dan export laporan
-- perbaikan empty-state chart dan overflow layout pada dashboard owner
-- penyesuaian label KPI seperti `Belum Diambil` agar sesuai dengan business logic yang benar
+Rute operasional memakai auth:sanctum, middleware active/role, dan scoped query. UserController memeriksa kewenangan pengelola. UI bukan mekanisme keamanan utama.
 
-Konfigurasi utama app mobile ada di `lib/core/constants/app_constants.dart`:
+Data historis transaksi tetap memakai transaction.owner_id saat kasir dipindahkan. Filter kasir yang sudah pindah perlu ditinjau karena daftar/validasi filter mengikuti hubungan akun saat ini.
 
-- `baseUrl = 'http://192.168.1.5/api-indafri-laundry/public/api'`
-- `useMockApi = false`
+Kelompok database pengujian terisolasi. Audit ini tidak memverifikasi ulang seluruh pemetaan data lama pada database aplikasi nyata.
 
-Artinya, aplikasi saat ini diarahkan ke server Laravel real dan bukan data dummy untuk alur operasional utama.
+## 4. Navigasi, branding dan autentikasi
 
-### Bukti validasi terbaru
+Rute: /splash, /login, /dashboard, /customers, /services, /transactions, /collections, /collection-settlement, /scan-qr, /reports, /users, /audit-logs, /expenses, /settings.
 
-Backend telah divalidasi melalui Laravel test yang mencakup auth, status transaksi, profil, upload bukti, dan export laporan:
+Tab menggunakan shell persisten. Drawer mengikuti role. Logout di Settings. Super Owner mempunyai tab akun, bukan laporan operasional.
 
-- `php artisan test tests/Feature/ProfileProofAndExportTest.php tests/Feature/TransactionStatusContractTest.php tests/Feature/UserManagementAndAuthTest.php`
-- hasil: `8 tests passed` dengan `28 assertions`
+Branding: logo lokal assets/brand/karsaone_logo.png, aksen biru, permukaan putih, avatar biru/teks hitam, splash animasi Flutter sekitar 2,6 detik, termasuk saat logout. Aset native launcher/splash tersedia; rendering setiap launcher/perangkat belum diuji.
 
-Dengan demikian, login akun aktif, status transaksi, profil user, upload bukti, dan export laporan sudah dinyatakan berfungsi sesuai kontrak backend yang diperbarui.
+Login:
 
----
+1. Flutter mengirim username/password ke POST /api/auth/login.
+2. Laravel memeriksa hash password dan status akun.
+3. Token Sanctum dikembalikan; token/user disimpan melalui FlutterSecureStorage.
+4. Router memilih dashboard dari sesi dan role.
+5. Salah kredensial: “Username atau password salah.” Nonaktif: “Akun dinonaktifkan.” Error lain pada alur login dipetakan ke pesan umum.
 
-## 3. Stack Teknologi
+Sanctum menggunakan bearer token, bukan JWT. Field refresh token lokal tidak menunjukkan adanya endpoint refresh backend.
 
-### Frontend (Flutter)
+“Ingat saya” membatasi **30 hari lokal**, saat auto-login. Token baru mempunyai expires_at +30 hari dan Sanctum expiration 43.200 menit juga membatasi token lama. Startup memverifikasi `/auth/me` dan memakai role/owner terkini dari server. Server error tidak memberi akses berdasarkan akun lokal.
 
-- Flutter SDK
-- Riverpod untuk state management
-- GoRouter untuk routing/navigation
-- Material 3 untuk design system
-- Dio untuk HTTP client
-- flutter_secure_storage dan shared_preferences untuk sesi/token
-- image_picker untuk mengambil bukti foto pengambilan dan gambar QR dari galeri
-- QR code scanner dan generator
-- Bluetooth thermal printer support
-- Intl untuk format angka/tanggal lokal Indonesia
+Logout sudah diperbaiki dengan mempertahankan konteks bearer pada middleware akun aktif. Token aktif dicabut, sesi lain tidak terhapus. Perubahan password sendiri mencabut sesi lain tetapi mempertahankan sesi saat ini. Login dibatasi 5 request/menit per identitas+IP dan 30/menit per IP; 429 ditampilkan sebagai pemberitahuan aman.
 
-### Backend (Laravel)
+401 API dan 403 khusus akun nonaktif membersihkan sesi Flutter. 403 role biasa dan login gagal tidak mengeluarkan sesi secara keliru; respons token lama tidak membatalkan login baru. Batasan deployment/perangkat dijelaskan pada catatan perbaikan.
 
-- Laravel
-- Sanctum untuk API authentication
-- MySQL/SQLite (dalam project local bisa sqlite untuk dev; struktur model siap untuk database mysql)
-- Eloquent ORM
-- API Resource controllers
+## 5. Pelanggan, layanan dan transaksi
 
----
+Pelanggan:
 
-## 4. Arsitektur Frontend
+- Kasir dan Owner dapat menambah.
+- Owner memperbarui/menghapus sesuai izin; pelanggan bertransaksi dilindungi dari penghapusan.
+- Nama alfabetis; telepon/alamat/jenis kelamin opsional.
+- Aksi cepat membuka halaman pelanggan dengan modal tambah.
+- Controller input dimiliki State modal, dilepas saat route modal berakhir.
+- Tes widget simpan satu kali, tap area luar dan Back lulus tanpa exception. Seluruh kombinasi keyboard/perangkat belum diuji.
 
-Frontend menggunakan pola Clean Architecture yang terbagi per fitur.
+Layanan:
 
-### Struktur utama
+- Kasir membaca katalog; Owner mengatur harga, unit dan estimasi.
+- Layanan terpakai tidak boleh dihapus.
+- Laravel menggunakan harga/estimasi layanan, bukan mempercayai harga/estimasi request Flutter.
 
-- `lib/core/` : konfigurasi umum, routing, tema, network, exception, util
-- `lib/shared/` : enum relasi role, reusable widget
-- `lib/features/` : fitur utama app
+Transaksi:
 
-### Pola umum per fitur
+- Query pencarian, status, pembayaran, tanggal, akun dan pagination backend.
+- Pencatatan pelanggan, layanan, kuantitas, catatan, metode dan pembayaran awal.
+- Invoice/QR mengidentifikasi transaksi. Transaksi baru diarahkan ke detail.
+- Update/hapus umum hanya Owner. Pembayaran melalui payment, pengambilan melalui collection.
+- Transaksi dibayar/diambil mempunyai perlindungan penghapusan.
+- Diskon, refund dan pembatalan finansial bukan alur lengkap saat ini; placeholder bukan implementasi refund.
 
-Setiap fitur biasanya punya:
+**Ketidaksesuaian Express:** Flutter menawarkan tambahan 25%, tetapi request tidak mengirim kontrak Express dan Laravel menghitung layanan biasa. Pembayaran penuh sesuai UI dapat ditolak karena melebihi total server. Fitur ini belum terintegrasi.
 
-- `data/` : model, datasource, repository implementation
-- `domain/` : entity, repository interface, usecase
-- `presentation/` : provider, screen, widget
+## 6. Pembayaran dan status resmi
 
-Contoh yang paling jelas ada pada fitur `auth` dan `master_data`.
+payment_status: unpaid, downPayment, paid.
+laundry_status: received, washing, drying, ironing, completed, late, collected.
 
-### Routing aplikasi
+| Istilah UI | Definisi saat ini |
+| --- | --- |
+| Diproses | received/washing/drying/ironing; estimasi masih di masa depan |
+| Selesai / siap diambil | completed; late juga tetap belum diambil |
+| Belum diambil | completed atau late, bukan collected; tidak termasuk semua transaksi baru |
+| Terlambat | Belum diambil dan waktu melewati estimasi + durasi sejak dibuat hingga estimasi |
+| Sudah diambil | collected melalui pengambilan resmi setelah siap dan pembayaran lunas |
 
-Router utama dijelaskan di `lib/core/router/app_router.dart`.
+Durasi 2 jam: estimasi jam ke-2; late setelah jam ke-4. Perbandingan memakai >; tepat pada batas belum late. Otomatisasi estimasi adalah aturan aplikasi sekarang, bukan bukti pemeriksaan fisik pekerjaan.
 
-Rute utama:
+Scheduler laundry:sync-statuses setiap menit dengan withoutOverlapping. Sebagian endpoint juga menyinkronkan kelompok saat request. Tes memakai waktu virtual; cron hosting belum diverifikasi.
 
-- `/splash`
-- `/login`
-- `/dashboard`
-- `/customers`
-- `/services`
-- `/transactions`
-- `/collections` (halaman Pengambilan/Pelunasan)
-- `/scan-qr`
-- `/reports`
-- `/users`
-- `/settings`
+Pembayaran:
 
-Flow redirect:
+- “Lunasi Saja” melunasi tanpa mengambil barang; bisa sebelum siap, nonaktif setelah lunas.
+- “Ambil & Lunasi” mengambil barang siap dan melunasi sisa; menjadi “Ambil” jika sudah lunas.
+- Pengambilan sebelum siap ditolak. Foto opsional.
+- Boolean multipart harus sesuai validator Laravel; collection dengan 0/1 diuji.
 
-1. aplikasi membuka splash
-2. sistem mengecek session login
-3. jika belum login -> redirect ke login
-4. jika sudah login -> redirect ke dashboard sesuai role
+POST /transactions/{id}/payment menerima **paid_amount kumulatif**, bukan nominal tambahan. Backend mencatat selisih positif sebagai TransactionPayment. Saldo 30.000 → 100.000 menghasilkan event 30.000 dan 70.000.
 
----
+`collected` kini terminal pada update/status umum. Mutasi transaksi dan scheduler membaca ulang baris dengan lockForUpdate dalam DB transaction. Retry saldo kumulatif sama menjadi no-op tanpa ledger/audit tambahan; pembayaran lebih kecil ditolak. Pengambilan memeriksa saldo, bukan hanya label paid. Request paralel MySQL belum diuji; bukan idempotency-key untuk create pesanan. Bukti baru dibersihkan saat rollback tanpa menghapus bukti lama.
 
-## 5. Role & Akses Pengguna
+## 7. Dashboard Owner, laporan dan pengeluaran
 
-Role user didefinisikan di `lib/shared/enums/user_role.dart`.
+Beranda:
 
-### Role yang ada
+- Ringkasan pembayaran, transaksi, pelanggan, proses dan tagihan.
+- Periode/filter ke server; kartu pembayaran/grafik mempunyai endpoint/cache terpisah.
+- Kartu operasional merupakan antrean aktif lintas tanggal, berbeda dari periode finansial.
+- Filter seluruh kelompok, Me (Owner), kasir termasuk nonaktif.
+- Layanan populer, pelanggan dan “Yang Perlu Perhatian” dari Laravel.
 
-- `superOwner`
-- `owner`
-- `kasir`
+Laporan:
 
-### Hak akses
+- Default **Hari ini**, dengan periode/filter akun.
+- Nilai pesanan, pembayaran diterima, sisa tagihan, operasional dan pengeluaran.
+- Rincian waktu, transaksi, metode, nominal dan pencatat pembayaran jika tersedia.
+- Menu ke Riwayat Perubahan yang sama; tidak ada halaman audit duplikat.
+- CSV baris pembayaran sesuai query; proteksi formula spreadsheet belum tersedia.
 
-- `superOwner` dan `owner` dapat mengelola pengguna
-- `superOwner` dan `owner` dapat melihat laporan
-- `superOwner` dan `owner` dapat mengelola harga layanan
-- `superOwner` bisa akses backup/restore dan akun khusus
+| Angka | Sumber / waktu |
+| --- | --- |
+| Nilai pesanan | Total transaksi pada rentang tanggal pembuatan |
+| Pembayaran diterima | Event berdasarkan paid_at, bukan otomatis tanggal pesanan |
+| Tagihan belum lunas | Total-pembayaran transaksi dalam cakupan query, bukan selalu saldo semua umur |
+| Filter akun pesanan | Pembuat transaksi, cashier_id |
+| Filter akun pembayaran | Pencatat event, recorded_by |
+| Pengeluaran | Catatan Expense berdasarkan occurred_at pada periode; bukan saldo kas fisik atau bukti uang sudah keluar |
 
-Artinya, sistem sudah dibangun dengan konsep role-based access control.
+Owner membayar pesanan kasir: event pada Me, pesanan tetap pembuatnya. Perbedaan angka dua kategori dapat benar.
 
----
+Data lama:
 
-## 6. Alur Login dan Session
+- Migrasi saldo lama menghasilkan source=legacy_balance dari saldo kumulatif dan timestamp tersedia.
+- Waktu pembayaran bertahap asli tidak bisa direkonstruksi dari satu saldo.
+- Migrasi mengisi pencatat dengan pembuat transaksi; **bukan bukti penerima pembayaran sebenarnya**.
+- Tampilan/CSV perlu menandai keterbatasan; jangan menyajikan atribusi lama sebagai fakta.
 
-### Frontend
+Pengeluaran terhubung ke /expenses; ringkasan di Beranda, rincian di Laporan/menu. Tidak ada shift, modal kas, kas fisik, rekonsiliasi atau persetujuan baru.
 
-User login melalui `LoginScreen` dan `auth_providers.dart`.
+Waktu pengeluaran dapat dipilih, tetapi belum ada status rencana/dibayar atau job pembayaran terjadwal. Tanggal masa depan dalam rentang laporan tetap dijumlahkan. Definisi pengeluaran aktual vs rencana perlu dipastikan sebelum menganggap fitur ini penjadwalan kas.
 
-Alur:
+Cache keuangan belum otomatis berganti saat tengah malam/tiap perubahan kasir lain. Refresh diperlukan; “realtime” bukan websocket/live push.
 
-1. user memasukkan username & password
-2. `LoginUseCase` memanggil repository auth
-3. repository mengakses `AuthRemoteDataSource`
-4. frontend mengirim request ke API Laravel `/api/auth/login`
-5. backend menghasilkan token Sanctum
-6. token disimpan ke secure storage
-7. sessionProvider diupdate
-8. aplikasi pindah ke dashboard
+## 8. Akun, settings dan riwayat
 
-### Session handling
+Owner mengelola kasir sendiri. Super Owner mengelola Owner/Kasir dan hubungan keduanya. Nonaktif tidak menghapus transaksi; monitoring nonaktif diuji tetap menyertakan data.
 
-- `sessionProvider` mengecek user yang sedang login
-- splash screen digunakan untuk auto-login
-- logout memutus token dan menghapus sesi
+Kredensial kasir melalui /users/{id}/credentials dengan verifikasi pengelola. Password hash tidak bisa dilihat kembali plaintext. Reset terkelola tersedia; forgot-password publik/email reset belum tersedia.
 
-Ini ditangani di:
+Settings:
 
-- `lib/features/auth/presentation/providers/auth_providers.dart`
-- `lib/features/auth/data/datasources/auth_local_datasource.dart`
-- `lib/core/network/dio_client.dart`
+- Profil/password yang diizinkan dikirim ke backend.
+- Nama/telepon/alamat usaha per Owner di Laravel.
+- Printer/default MAC/ukuran kertas adalah preferensi perangkat, bukan konfigurasi global server.
+- Super Owner memakai settings akun/sistem, bukan printer/informasi usaha pribadinya.
+- Backup v2 owner_configuration_backup berisi konfigurasi usaha, **bukan** database/akun/password/pelanggan/transaksi.
+- Restore hanya Super Owner; seluruh Owner divalidasi sebelum penulisan, Owner duplikat ditolak, dan semua baris berada dalam satu DB transaction. Rollback baris kedua yang gagal diuji.
+- Cache usaha Flutter disimpan sebelum remote save; gagal server dapat meninggalkan cache berbeda.
 
----
+Riwayat:
 
-## 7. Fitur yang Sudah Diterapkan
+- Backend mencatat transaksi, pembayaran, pengambilan, update/hapus, akun, pengeluaran, sinkronisasi status.
+- Pada alur DB transaction, mutasi dan audit rollback bersama jika gagal.
+- Metadata before/after memilih field relevan, tidak password/token.
+- Owner membaca kelompok sendiri. Super Owner tidak mendapat monitoring audit operasional.
+- Pelaku otomatis null/sistem. actor_id mengacu akun saat dibaca; belum snapshot immutable nama/role saat kejadian.
 
-## 7.1 Autentikasi & Session
+## 9. Bon, WhatsApp, QR dan platform
 
-Fitur yang sudah berjalan:
+Bon ESC/POS atau gambar. WhatsApp aktif jika nomor pelanggan ada. Direct-share Android menggunakan FileProvider cache receipts/, tidak exported, izin URI sementara.
 
-- splash screen
-- login
-- logout
-- remember login
-- auto login
-- sesi user disimpan di storage
-- redirect otomatis berdasarkan login status
-- role-based dashboard navigation
+Batas:
 
-### Penjelasan penggunaan
+- Printer service mendukung Android; platform lain memakai stub/penolakan.
+- Direct-share WhatsApp Android; WhatsApp biasa/Business/nomor belum disimpan perlu tes perangkat.
+- Scanner ada, tetapi controller stop/analyzeImage tidak dipasang ke MobileScanner; perlu koreksi dan uji lifecycle.
+- iOS mempunyai scaffolding/camera permission, tetapi izin photo library belum tertera. Build/signing/printer/galeri/share iOS belum diuji.
+- Web tidak membuktikan kesetaraan fitur perangkat Android/iOS.
 
-User membuka aplikasi, sistem mengecek apakah token/sesi masih valid. Jika valid, langsung masuk dashboard. Jika tidak, diarahkan ke login.
+## 10. Peta endpoint Laravel
 
----
+Semua path berawalan /api. Izin efektif dari middleware dan controller.
 
-## 7.2 Dashboard
+| Fitur | Endpoint | Izin |
+| --- | --- | --- |
+| Login | POST /auth/login | Publik, belum throttle |
+| Sesi/profil | POST /auth/logout; GET /auth/me, /profile; PATCH /profile, /profile/password | Login aktif, perubahan sesuai role |
+| Pelanggan | /customers resource | Kasir/Owner baca+tambah; Owner update/hapus |
+| Layanan | /services resource | Kasir/Owner baca; Owner pengelola |
+| Transaksi | /transactions; /transactions/today; /transactions/ready-to-collect | Owner/Kasir, kelompok sendiri |
+| Koreksi/hapus | PUT/PATCH/DELETE /transactions/{id} | Owner, aturan riwayat/pembayaran |
+| Payment/collection | POST /transactions/{id}/payment, /collection, /proof; PATCH /status | Owner/Kasir, kelompok sendiri |
+| Dashboard | GET /dashboard/kasir, /dashboard/owner, /dashboard/owner/financial | Sesuai role operasional |
+| Laporan | GET /reports/revenue, /reports/statistics, /reports/overview, /reports/export | Owner |
+| Akun | /users; POST /users/{id}/credentials; PATCH /users/{id}/status | Owner/Super Owner sesuai target |
+| Struktur | GET /dashboard/super-owner | Super Owner |
+| Audit | GET /audit-logs | Owner |
+| Pengeluaran | GET/POST /expenses; PUT/PATCH/DELETE /expenses/{id} | Owner |
+| Usaha | GET/PATCH /settings | Kasir/Owner baca; Owner ubah |
+| Sistem | GET/PATCH /system-settings; GET /account-policy | Super Owner; policy juga Owner |
+| Config backup | GET /settings/backup; POST /settings/restore | Super Owner |
 
-Dashboard dibuat per role:
+Sebagian deklarasi role master data menyebut Super Owner, tetapi OwnerScopeService menolak operasional tersebut. Inkonsistensi deklarasi, bukan izin monitoring penuh.
 
-- `SuperOwnerDashboardScreen`
-- `OwnerDashboardScreen`
-- `KasirDashboardScreen`
+## 11. Verifikasi dan keselamatan data
 
-Semua dashboard menggunakan layout shell yang sama di `DashboardShell`, dengan:
+Tidak menjalankan migrasi terhadap database aplikasi, reset, seed akun nyata, atau mengubah kredensial/config produksi. PHPUnit menjalankan migrasi fixture pada SQLite :memory: dengan environment testing, DB_URL kosong, cache/session array, queue sync. Upload memakai storage fake.
 
-- AppBar
-- drawer navigation
-- role-sensitive menu
-- tombol logout
-- bottom navigation yang tetap tampil pada halaman tab utama
+- Backend normal + 21 tes regresi baru: 71/71 lulus, 452 assertions.
+- Audit tambahan: 13/13 lulus, 105 assertions; sebelumnya 9 gagal.
+- Flutter: 31 lulus; sesi/interceptor/repository/provider, notifikasi login dan modal aksi cepat simpan/tutup/Back.
+- Dart: 0 error, 12 warning lama; pemeriksaan terarah file autentikasi/interceptor/tes perubahan bersih.
+- Composer runtime audit: 14 advisori pada 3 paket; belum upgrade.
 
-Bottom navigation dibedakan menurut role:
+Cara testing aman di README. UI test tidak memakai API nyata; API test tidak memakai database pelanggan asli. Tes injection/upload adalah sampel negatif, bukan penetration test lengkap.
 
-- Kasir: Beranda, Transaksi, Scan QR, Pelanggan, Pengaturan.
-- Owner/Super Owner: Beranda, Transaksi, Scan QR, Laporan, Pengaturan.
+## 12. Temuan terbuka dan urutan lanjutan
 
-Tombol Scan QR berada di tengah sebagai tombol khusus yang lebih menonjol. Drawer (ikon burger) tetap dipertahankan sebagai akses seluruh menu, termasuk menu yang tidak berada di bottom navigation.
+Sudah ditangani dalam kode: logout/revokasi/expiry/rate limit/sesi Flutter, terminal collected + row lock/retry pembayaran, restore atomik, larangan downgrade Owner bertanggungan, error generik dan formula CSV. Super Owner tetap hanya mengelola struktur akun/sistem.
 
-### Menu utama yang tergantung role
+Yang masih perlu dilakukan:
 
-- Dashboard
-- Transaksi
-- Pelanggan
-- Layanan Laundry
-- Scan QR
-- Laporan
-- Manajemen User
-- Pengaturan
+1. Selaraskan waktu bisnis WIB dan batas periode tanpa menafsir ulang timestamp data lama.
+2. Download bukti privat/scoped dan upgrade paket runtime terarah.
+3. Express/pembulatan, controller scanner, cache dan atribusi riwayat legacy.
+4. Uji paralel MySQL pada database test terpisah dan E2E perangkat/staging.
+5. Tuntaskan penanganan token/history pada seluruh salinan backend dan verifikasi deployment HTTPS/docroot/env/DB permissions/firewall/cron.
 
----
+[Audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md) memuat bukti sebelum perbaikan. [Penanganan terbaru](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) memuat perubahan, tes dan batas yang masih terbuka.
 
-## 7.3 Master Data Pelanggan
+## 13. Git dan deployment
 
-Data pelanggan diambil dari API Laravel.
+.gitignore kedua repo mencakup env varian, kunci privat/signing, konfigurasi HTTP privat, cache/log dan backup/data lokal. Source, lockfile, migrasi, contoh env tanpa rahasia, aset dan tes tidak dihapus.
 
-Fitur:
+api_test.http backend masih tracked tetapi isi kerja sekarang memakai placeholder; fingerprint token terpapar diblokir Sanctum. Riwayat awal tetap mengandung token. Tidak menghapus baris token nyata, mengubah indeks, rewrite history atau rotasi kredensial. Semua salinan backend harus menerima mitigasi; koordinasikan history cleanup sebelum repo dibagikan.
 
-- lihat daftar pelanggan
-- tambah pelanggan baru
-- detail pelanggan
-- edit pelanggan
-- cari pelanggan
-- menampilkan total transaksi per pelanggan
+Produksi: .env privat di luar docroot, debug mati, HTTPS, akun DB khusus/izin minimum, DB tidak terbuka ke internet, scheduler aktif, penyimpanan bukti berizin. Audit kode tidak membuktikan kondisi hosting.
 
-### Struktur terkait
-
-- `lib/features/master_data/domain/entities/customer_entity.dart`
-- `lib/features/master_data/data/datasources/customer_remote_datasource.dart`
-- `lib/features/master_data/presentation/screens/customers_screen.dart`
-- `lib/features/master_data/presentation/screens/customer_detail_screen.dart`
-
-### Data pelanggan di backend
-
-Model `Customer` memiliki field:
-
-- `name`
-- `phone`
-- `address`
-- `gender`
-
-Relasi:
-
-- 1 pelanggan punya banyak transaksi
-
----
-
-## 7.4 Master Data Layanan Laundry
-
-Fitur ini sudah ada dan dibangun untuk mengelola jenis layanan laundry.
-
-Fungsi:
-
-- daftar layanan
-- tambah layanan baru
-- edit layanan
-- hapus layanan (jika diterapkan di backend)
-- pilih satuan: kg/item
-- estimasi waktu pengerjaan
-- harga layanan
-
-### Data layanan
-
-Backend `Service` model mendefinisikan:
-
-- `name`
-- `price`
-- `unit`
-- `estimation_hours`
-
-### Alur bisnis
-
-Ketika transaksi dibuat, user memilih jasa laundry dan jumlah kuantitas. Sistem akan menghitung subtotal dan total berdasarkan harga per satuan.
-
----
-
-## 7.5 Modul Transaksi (Inti Bisnis)
-
-Ini adalah fitur paling penting dari sistem.
-
-### Fungsi yang sudah ada
-
-- membuat transaksi baru
-- memilih pelanggan
-- memilih layanan
-- mengisi jumlah/berat
-- memilih metode pembayaran
-- mengatur kondisi pembayaran (belum bayar, DP, lunas)
-- melihat estimasi selesai
-- melihat status laundry
-- melihat transaksi sebelumnya
-- filter transaksi melalui panel bottom sheet
-- memilih lebih dari satu status transaksi sekaligus
-- filter periode pembuatan transaksi (tanggal dari--sampai)
-- pencarian invoice, pelanggan, nomor telepon, atau layanan
-- membuka detail transaksi
-- pengurutan transaksi berdasarkan status pengambilan dan waktu transaksi
-- QR invoice
-- proses pengambilan/pelunasan pada halaman khusus
-
-### Data transaksi mencakup
-
-- customer
-- nomor invoice
-- total harga
-- status pembayaran
-- status laundry
-- tanggal dibuat
-- estimasi selesai
-- catatan tambahan
-
-### Logika status otomatis
-
-Di `transaction_entity.dart` ada logic untuk menghitung status laundry berdasarkan `estimatedFinishAt` dan `createdAt`.
-
-Status yang dipetakan:
-
-- `received`
-- `washing`
-- `drying`
-- `ironing`
-- `completed`
-- `collected`
-- `late`
-
-### Filter transaksi
-
-Set di `TransactionsScreen`:
-
-- Semua
-- Hari Ini
-- Diterima
-- Selesai
-- Belum Diambil
-- Sudah Diambil
-- Lunas
-- Belum Lunas
-
-Filter status bersifat multi-select dan dapat dipakai bersama filter periode. Panel filter dibuka melalui tombol `Filter` berbentuk pill-outline di bawah search bar sisi kanan. Saat panel pertama kali dibuka, semua checkbox status kosong. Checkbox `Semua` dapat dipilih untuk mencentang seluruh status.
-
-Pada halaman Pengambilan, daftar otomatis hanya memuat transaksi yang belum diambil. Pilihan status `Sudah Diambil` dan `Belum Diambil` tidak ditampilkan pada panel filter tersebut.
-
-Urutan default daftar transaksi adalah transaksi yang belum diambil dari terbaru ke terlama, kemudian transaksi yang sudah diambil dari terbaru ke terlama.
-
-### Flow transaksi
-
-1. user masuk menu transaksi
-2. user pilih pelanggan
-3. user pilih layanan laundry
-4. sistem menghitung subtotal otomatis
-5. user pilih metode pembayaran & status pembayaran
-6. transaksi disimpan ke backend
-7. transaksi keluar ke daftar riwayat
-8. status otomatis berubah sesuai estimasi selesai
-
----
-
-## 7.6 Payment & Status Pembayaran
-
-Model payment status di frontend:
-
-- `unpaid` => Belum Bayar
-- `downPayment` => DP
-- `paid` => Lunas
-
-Di backend Laravel, transaksi menyimpan:
-
-- `payment_status` => `unpaid` atau `paid`
-
-Jadi ada keselarasan umum antara frontend dan backend, meski beberapa status seperti DP belum sepenuhnya terluas di backend.
-
----
-
-## 7.7 QR Code & Scan QR
-
-Fitur sudah diterapkan untuk:
-
-- generate QR invoice
-- scan QR menggunakan kamera untuk membuka halaman Pengambilan/Pelunasan
-- memilih gambar QR dari galeri dan menganalisisnya menggunakan `MobileScannerController.analyzeImage`
-
-### File utama
-
-- `lib/features/transactions/presentation/screens/qr_scanner_screen.dart`
-- `lib/features/transactions/presentation/screens/transactions_screen.dart`
-- `lib/features/transactions/domain/entities/transaction_entity.dart`
-
-### Fungsi bisnis
-
-QR digunakan untuk memudahkan pengecekan transaksi tertentu dari pelanggan atau kasir tanpa harus mencari manual.
-
----
-
-## 7.8 Riwayat Transaksi & Laporan
-
-Fitur riwayat transaksi sudah dibentuk dengan daftar, filter, dan search. Laporan pencatatan pendapatan/operasional juga sudah disiapkan, dengan akses terbatas untuk role owner / super owner.
-
-Sumber utama:
-
-- `lib/features/reports/presentation/screens/reports_screen.dart`
-- `lib/features/transactions/presentation/screens/transactions_screen.dart`
-
----
-
-## 7.9 Manajemen User
-
-Fitur manajemen user dibangun untuk role yang berwenang.
-
-Fungsi umum:
-
-- melihat daftar user
-- melihat role user
-- mengatur hak akses
-
-Akses biasanya hanya untuk owner/superowner.
-
----
-
-## 7.10 Pengaturan & Printer
-
-Aplikasi sudah mempersiapkan pengaturan:
-
-- profil pengguna dengan field `Nama pengguna`
-- printer default
-- perangkat printer bluetooth
-- setting kertas/format bon
-
-### File terkait
-
-- `lib/features/settings/presentation/screens/settings_screen.dart`
-- `lib/features/printing/presentation/providers/printing_providers.dart`
-- `lib/features/printing/data/services/printer_device_service_native.dart`
-- `lib/features/printing/data/services/thermal_receipt_service_native.dart`
-
-### Fungsi cetak
-
-Aplikasi menyiapkan dukungan untuk mencetak struk/bon thermal 58mm menggunakan printer bluetooth.
-
----
-
-## 8. Alur Progres Fitur Secara Bertahap
-
-Dari README project frontend, alur pengembangan yang sudah terjadi adalah:
-
-### Tahap 1: Fondasi aplikasi
-
-- Clean Architecture
-- Riverpod
-- GoRouter
-- Material 3
-- autologin
-- role-based access
-- splash login dashboard
-
-### Tahap 2: Master Data
-
-- pelanggan
-- layanan laundry
-- CRUD dasar
-
-### Tahap 3: POS & transaksi
-
-- transaksi baru
-- mengatur item laundry
-- kalkulasi biaya otomatis
-- bayar tunai/QRIS/transfer
-- detail transaksi
-- status laundry
-
-### Tahap 4: Riwayat & QR
-
-- daftar riwayat transaksi
-- scan QR
-- invoice code
-
-### Tahap 5: Administrasi & printer
-
-- laporan
-- manajemen user
-- pengaturan profil pengguna dan printer
-- cetak bon thermal
-
----
-
-## 9. Backend Laravel: Struktur & Fitur
-
-Backend Laravel yang ada di `D:\laragon\www\api-indafri-laundry` sudah menyediakan API yang konsisten dengan kebutuhan aplikasi mobile.
-
-### Route API
-
-Di `routes/api.php`, route utama dibuat seperti:
-
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-
-Lalu untuk fitur bisnis:
-
-- `GET /api/customers`
-- `POST /api/customers`
-- `GET /api/customers/{id}`
-- `PUT /api/customers/{id}`
-- `DELETE /api/customers/{id}`
-
-- `GET /api/services`
-- `POST /api/services`
-- `GET /api/services/{id}`
-- `PUT /api/services/{id}`
-- `DELETE /api/services/{id}`
-
-- `GET /api/transactions`
-- `POST /api/transactions`
-- `GET /api/transactions/{id}`
-- `PUT /api/transactions/{id}`
-- `DELETE /api/transactions/{id}`
-
-Semua route dibungkus dengan middleware `auth:sanctum` agar hanya user login yang bisa mengakses.
-
----
-
-## 10. Backend: Model dan Relasi
-
-### `User`
-
-- Menggunakan `HasApiTokens` agar bisa membuat token API untuk mobile
-- Login menghasilkan token Sanctum
-
-### `Customer`
-
-Relasi:
-
-- hasMany Transaction
-
-### `Service`
-
-Representasi jenis layanan laundry. Masing-masing service punya:
-
-- name
-- price
-- unit
-- estimation_hours
-
-### `Transaction`
-
-Relasi:
-
-- belongsTo Customer
-- hasMany TransactionDetail
-
-### `TransactionDetail`
-
-Relasi:
-
-- belongsTo Transaction
-- belongsTo Service
-
-Ini struktur data yang tepat untuk transaksi laundry multi-item.
-
----
-
-## 11. Backend: Logic Controller
-
-### AuthController
-
-Fungsi:
-
-- login user
-- validasi username & password
-- cek password dengan `Hash::check`
-- buat token
-- return user data + token
-
-### CustomerController
-
-Fungsi CRUD pelanggan:
-
-- index
-- store
-- show
-- update
-- destroy
-
-### ServiceController
-
-Fungsi CRUD layanan laundry:
-
-- index
-- store
-- show
-- update
-- destroy
-
-### TransactionController
-
-Fungsi CRUD transaksi:
-
-- index: ambil semua transaksi dengan customer dan detail servis
-- store: validasi payload dan simpan transaksi + detail transaksi
-- show: detail satu transaksi
-- update: update status pembayaran atau order_status
-- destroy: hapus transaksi
-
-### Catatan penting
-
-Pada `TransactionController`, ketika transaksi baru dibuat, backend menghitung total dari semua item layanan lalu menyimpan detail per barang dengan:
-
-- `transaction_id`
-- `service_id`
-- `qty`
-- `price`
-- `subtotal`
-
-Jadi data transaksi bersifat detail-based dan cocok untuk laporan serta rekam jejak.
-
----
-
-## 12. Database & Struktur Migrasi
-
-Migrasi yang tersedia:
-
-- create_users_table
-- create_personal_access_tokens_table
-- create_customers_table
-- create_services_table
-- create_transactions_table
-- create_transaction_details_table
-
-Ini menunjukkan bahwa backend memang dirancang untuk sistem laundry yang lengkap, bukan hanya demo.
-
----
-
-## 13. Keselarasan Frontend dan Backend
-
-Berikut keselarasan utamanya:
-
-### 13.1 Auth
-
-Frontend mengirim:
-
-- username
-- password
-
-Backend mengembalikan:
-
-- token
-- user data
-- role user
-
-Frontend kemudian menyimpan token di secure storage dan menggunakan satu sesi login.
-
-### 13.2 Pelanggan
-
-Frontend memanggil API customers. Backend mengembalikan array pelanggan. UI menampilkan daftar kemudian detail dan form edit.
-
-### 13.3 Layanan
-
-Frontend memanggil API services. Backend memvalidasi:
-
-- `name`
-- `price`
-- `unit`
-- `estimation_hours`
-
-UI mobile menyediakan form yang kompatibel dengan struktur ini.
-
-### 13.4 Transaksi
-
-Frontend mengirim payload yang isinya seperti:
-
-- `customer_id`
-- `payment_status`
-- `services[]`
-  - `service_id`
-  - `qty`
-  - `price`
-
-Backend memvalidasi dan menyimpan transaksi bersama detail-itemnya.
-
-Ini sudah sesuai dengan flow aplikasi POS laundry.
-
-### 13.5 Status / pembayaran
-
-Frontend punya status laundry dan status pembayaran; backend mendukung order_status & payment_status. Meskipun perhitungan status otomatis lebih rinci di frontend, backend sudah menyediakan dasar yang cukup untuk sinkronisasi.
-
----
-
-## 14. Kelebihan yang Sudah Tercapai
-
-- arsitektur aplikasi sudah jelas dan rapi
-- alur login dan role berjalan
-- modul master data sudah lengkap
-- transaksi adalah inti bisnis dan sudah terintegrasi
-- UI mobile sudah cukup matang untuk kebutuhan operasional dasar
-- backend sudah ada dan sesuai kebutuhan
-- integrasi frontend-backend sudah berfungsi dengan pola API REST jelas
-
----
-
-## 15. Catatan Penting / Risiko yang Masih Perlu Diperhatikan
-
-Beberapa area yang perlu tetap diawasi:
-
-1. IP backend harus sesuai network device mobile.
-2. Aplikasi Flutter harus punya internet permission dan cleartext traffic untuk Android jika backend memakai HTTP local.
-3. Perhitungan status laundry di frontend dan backend belum 100% identik jika dipakai logika yang lebih detil.
-4. Beberapa fitur admin (backup, restore, role lebih spesifik) masih perlu diperluas di backend.
-5. Validasi payload / error handling harus tetap konsisten antara frontend dan backend.
-
----
-
-## 16. Kesimpulan
-
-Proyek ini sudah berjalan pada tingkat aplikasi laundry manajemen yang cukup matang untuk kebutuhan operasional nyata, bukan sekadar prototype.
-
-Dari sisi frontend, sudah ada fondasi yang kuat untuk:
-
-- auth,
-- dashboard,
-- pelanggan,
-- layanan,
-- transaksi,
-- laporan,
-- pengaturan dan printer.
-
-Dari sisi backend Laravel, sudah ada struktur API yang mendukung seluruh kebutuhan tersebut dengan pendekatan MVC + Eloquent + Sanctum.
-
-Artinya, proyek ini sudah berada dalam fase integrasi yang sehat dan dapat terus dikembangkan ke arah production-grade system dengan penyesuaian lanjut seperti:
-
-- validasi lebih ketat,
-- audit log,
-- role permission lebih detail,
-- backup restore,
-- export PDF/Excel,
-- notifikasi,
-- log transaksi dan histori perubahan.
-
----
-
-## 17. Detail Per Halaman Aplikasi dan Fungsi Tiap Tombol
-
-Berikut ini penjelasan alur tiap halaman sesuai kondisi implementasi yang sudah dibuat. Fokusnya bukan hanya tampilan, tetapi fungsi tombol, navigasi, dan apa yang terjadi saat user menekan tiap elemen.
-
-### 17.1 Splash Screen
-
-Halaman ini muncul saat aplikasi dibuka.
-
-Fungsi:
-
-- menampilkan logo laundry dan nama aplikasi
-- menampilkan loading spinner
-- menjalankan pengecekan sesi user di background
-- jika user sudah login, redirect ke dashboard
-- jika belum login, redirect ke login screen
-
-Pada implementasi, splash screen tidak melakukan navigasi manual sendiri. Navigasi justru diatur oleh router di `app_router.dart` dan `sessionProvider`.
-
-Jadi alurnya:
-
-1. aplikasi dibuka
-2. splash screen tampil 1-2 detik
-3. session dicek
-4. router memutuskan arah ke dashboard atau login
-
----
-
-### 17.2 Login Screen
-
-Halaman login adalah titik masuk utama jika user belum login.
-
-Elemen yang ada:
-
-- icon aplikasi di bagian atas
-- judul "Selamat Datang"
-- deskripsi singkat
-- form login berisi username dan password
-- tombol login
-
-Fungsi:
-
-- menerima username dan password
-- mengirim ke backend Laravel `/api/auth/login`
-- backend mengecek validitas user
-- jika sukses, token dan data user diterima
-- token disimpan ke secure storage
-- user diarahkan ke dashboard sesuai role
-
-Jika login gagal, aplikasi menampilkan error message dan user tetap di halaman login.
-
----
-
-### 17.3 Dashboard (Owner, Kasir, Super Owner)
-
-Dashboard adalah halaman rumah setelah login. Dashboard dibuat berbeda tergantung role user.
-
-#### 17.3.1 Dashboard Owner
-
-Tampilan berisi kartu-kartu ringkasan seperti:
-
-- Pendapatan Hari Ini
-- Pendapatan Bulan Ini
-- Jumlah Transaksi
-- Total Pelanggan
-- Laundry Diproses
-- Belum Diambil
-
-Tujuan:
-
-- owner bisa melihat performa usaha secara cepat
-- owner bisa mengevaluasi cashflow dan status operasional laundry
-
-Button yang paling penting di dashboard ini:
-
-- menu drawer di kiri atas
-- tombol logout di kanan atas
-
-Menu drawer berisi:
-
-- Dashboard
-- Transaksi
-- Pelanggan
-- Layanan Laundry
-- Scan QR
-- Riwayat Transaksi
-- Laporan
-- Manajemen User
-- Pengaturan
-
-Saat user menekan salah satu item, aplikasi akan berpindah ke screen terkait.
-
-Contoh:
-
-- tombol `Transaksi` -> ke halaman daftar transaksi
-- tombol `Pelanggan` -> ke halaman pelanggan
-- tombol `Layanan Laundry` -> ke screen kelola service
-- tombol `Laporan` -> ke halaman laporan pendapatan
-- tombol `Pengaturan` -> ke halaman pengaturan bisnis/printer
-
-#### 17.3.2 Dashboard Kasir
-
-Dashboard kasir fokus pada operasional harian. Kartu statistiknya seperti:
-
-- Transaksi Hari Ini
-- Laundry Diproses
-- Laundry Selesai
-- Belum Diambil
-
-Fungsi utama:
-
-- kasir cepat melihat pekerjaan yang harus ditangani hari itu
-- kasir dapat langsung membuat transaksi baru dari tombol `Transaksi Baru`
-- kartu statistik dapat ditekan dan membuka halaman Transaksi dengan filter yang sesuai
-
-Pemetaan kartu statistik:
-
-- `Transaksi Hari Ini` -> Hari Ini
-- `Laundry Diproses` -> Diproses
-- `Laundry Selesai` -> Selesai
-- `Belum Diambil` -> Belum Diambil
-
-Pada bagian `Antrean Aktif`, tab `Siap Diambil` menampilkan transaksi yang sudah mencapai atau melewati waktu estimasi selesai, termasuk transaksi telat dari hari sebelumnya. Daftar ini hanya bersifat informasi dan tidak menggunakan gesture swipe. Transaksi akan hilang setelah statusnya diubah menjadi `collected` melalui proses Ambil/Pelunasan manual.
-
-Button yang penting:
-
-- `Transaksi Baru` -> membuka halaman pembuatan transaksi baru
-- `Ambil/Pelunasan` -> menampilkan pilihan Scan QR atau Cari Transaksi
-- tombol logout -> keluar aplikasi
-- drawer menu -> sama seperti owner, tetapi akses menu tertentu dibatasi role
-
-Navigasi utama memakai bottom navigation. Isi halaman bergeser mengikuti arah tab tujuan, sedangkan bottom navigation tetap diam. Tombol back perangkat dari tab selain Beranda kembali ke Beranda; dari Beranda aplikasi menampilkan dialog konfirmasi keluar.
-
-#### 17.3.3 Dashboard Super Owner
-
-Pada implementasi, super owner memakai layout dashboard owner, karena super owner punya akses seluruh menu dan fitur administratif penuh.
-
-Perbedaannya:
-
-- dia bisa melihat semua fitur owner
-- menu tambahan untuk backup/restore dan manajemen user muncul karena role ini memiliki akses spesial
-- dia punya hak akses paling tinggi dibanding role lain
-
----
-
-### 17.4 Halaman Pelanggan
-
-Halaman ini berisi daftar semua pelanggan yang tersimpan di database backend.
-
-Fungsi tombol dan elemen:
-
-- tombol search di AppBar -> mencari pelanggan dari daftar yang sudah ada
-- tombol floating `Tambah` di bagian bawah -> membuka form untuk menambahkan pelanggan baru
-- setiap card pelanggan -> klik untuk membuka detail pelanggan
-- icon edit di sisi kanan card -> mengubah data pelanggan
-- long press / tahan card -> menghapus pelanggan (hanya untuk role yang punya hak)
-
-Flow lengkap:
-
-1. user buka menu Pelanggan
-2. aplikasi memanggil API pelanggan dari backend
-3. daftar tampil dalam bentuk list card
-4. jika user klik card, masuk ke detail pelanggan
-5. jika user klik `Tambah`, muncul bottom sheet form
-6. setelah simpan, data dikirim ke backend dan list refresh otomatis
-
-Pada halaman pelanggan, kasir biasanya tidak bisa menghapus pelanggan karena hak akses dibatasi.
-
----
-
-### 17.5 Detail Pelanggan
-
-Halaman detail pelanggan menampilkan informasi rinci seperti:
-
-- nama pelanggan
-- nomor HP
-- alamat
-- jenis kelamin
-- jumlah transaksi yang pernah dilakukan
-
-Tujuan:
-
-- memudahkan admin/kasir melihat riwayat pelanggan
-- memudahkan saat membuat transaksi baru karena data pelanggan sudah mudah dikenali
-
-Biasanya halaman ini dibuka dari daftar pelanggan ketika user tap card pelanggan.
-
-Selain data profil, halaman ini menampilkan history transaksi milik pelanggan tersebut. History berisi invoice, tanggal transaksi, layanan, serta status `Sudah diambil` atau `Belum diambil`. Sekitar empat transaksi ditampilkan dalam area list yang dapat discroll. Tap pada salah satu transaksi membuka halaman Detail Transaksi.
-
----
-
-### 17.6 Halaman Layanan Laundry
-
-Halaman ini berisi daftar semua jenis layanan laundry yang tersedia.
-
-Contoh layanan misalnya:
-
-- Cuci Kiloan
-- Setrika
-- Dry Clean
-- Express Service
-- dll
-
-Elemen yang ada:
-
-- AppBar berjudul `Layanan Laundry`
-- tombol floating `Tambah` -> menambah layanan baru
-- list card layanan dengan nama, harga, unit, estimasi waktu
-- klik card -> buka form edit
-- long press -> hapus layanan
-
-Fungsi utamanya:
-
-- mengatur daftar produk jasa laundry
-- menentukan harga layanan
-- menentukan satuan (kg/item)
-- menentukan estimasi selesai
-
-Ketika membuat transaksi, user memilih layanan dari daftar ini, lalu aplikasi otomatis menghitung subtotal dan estimasi selesai berdasarkan harga dan estimasi waktu yang sudah diatur.
-
----
-
-### 17.7 Halaman Transaksi Baru
-
-Ini adalah halaman inti dari aplikasi.
-
-Fungsi utamanya adalah membuat transaksi laundry baru.
-
-Urutan langkah pada halaman ini:
-
-1. `Pilih pelanggan`
-   - user memilih nama pelanggan dari daftar
-   - jika belum ada pelanggan, ada tombol `Tambah pelanggan baru`
-
-2. `Pilih layanan`
-   - user memilih layanan laundry yang akan diproses
-   - aplikasi menampilkan estimasi selesai sesuai layanan yang dipilih
-
-3. `Masukkan jumlah atau berat`
-   - sesuai jenis service, bisa berbentuk jumlah item atau berat kg
-
-4. `Layanan Express`
-   - toggle `Layanan Express`
-   - akan menambah biaya 25% sesuai implementasi
-
-5. `Catatan (opsional)`
-   - user bisa menulis catatan tambahan untuk laundry
-
-6. `Metode pembayaran`
-   - pilihan: Tunai, QRIS, Transfer
-
-7. `Status pembayaran`
-   - pilihan: Belum Bayar, DP, Lunas
-
-8. `Ringkasan harga`
-   - subtotal
-   - express fee
-   - total akhir
-
-9. Tombol `Simpan Transaksi`
-   - data dikirim ke backend
-   - transaksi dibuat dan ditampilkan di daftar transaksi
-
-Jika semua input valid, transaksi berhasil tersimpan lalu aplikasi kembali ke daftar transaksi.
-
----
-
-### 17.8 Halaman Daftar Transaksi
-
-Halaman ini menampilkan semua transaksi yang sudah dibuat.
-
-Fitur yang ada:
-
-- search bar untuk invoice, pelanggan, nomor HP, atau layanan
-- tombol pill `Filter` di bawah search bar sisi kanan
-- panel filter berisi dropdown status dan periode pembuatan transaksi dari tanggal--sampai tanggal
-- tombol floating `Transaksi Baru` untuk menambah transaksi baru
-- daftar card transaksi
-
-Setiap card transaksi menampilkan:
-
-- nama pelanggan
-- nomor invoice
-- nama layanan
-- estimasi selesai
-- total tagihan
-- status laundry
-- status pembayaran
-
-Saat user menekan card transaksi, aplikasi membuka halaman detail transaksi.
-
-Daftar transaksi menggunakan urutan terbaru ke terlama, dengan transaksi yang sudah diambil ditempatkan setelah transaksi yang belum diambil.
-
----
-
-### 17.9 Detail Transaksi
-
-Halaman detail transaksi adalah halaman kontrol utama setelah transaksi dibuat.
-
-Yang ada di halaman ini:
-
-- QR code invoice
-- nama pelanggan dan nomor HP
-- nama layanan dan qty
-- tanggal masuk
-- estimasi selesai
-- status laundry
-- status pembayaran
-- total biaya
-- tombol `Hubungi via WhatsApp`
-- tombol `Ambil / Pelunasan` menuju halaman Pengambilan/Pelunasan
-- tombol `Cetak Bon`
-- menu `Hapus transaksi` jika role cocok
-
-Status laundry dan pembayaran pada halaman ini bersifat informasi otomatis/read-only. Kasir tidak dapat mengubahnya dari halaman detail transaksi. Serah-terima dan pelunasan hanya dilakukan dari halaman Pengambilan/Pelunasan.
-
-Fungsi tombol penting:
-
-#### Hubungi via WhatsApp
-- membuka WhatsApp ke nomor pelanggan
-- text otomatis memuat info transaksi
-
-#### Cetak Bon
-- otomatis mengirim data transaksi ke printer Bluetooth yang sudah diatur di pengaturan
-- mencetak struk laundry sesuai format thermal
-
----
-
-### 17.10 Halaman Pengambilan/Pelunasan
-
-Halaman ini khusus untuk menyelesaikan serah-terima laundry dan pembayaran. Halaman dibuka dari menu `Pengambilan`, hasil scan QR invoice, atau card transaksi pada daftar Pengambilan.
-
-Halaman berisi:
-
-- bagian `Bukti pengambilan` dengan tombol kamera dan pratinjau foto
-- kode invoice dalam teks, tanpa QR code
-- nama serta nomor telepon pelanggan
-- detail tagihan: total, sudah dibayar, dan sisa tagihan
-- tombol bersebelahan `Ambil Saja` dan `Lunasi`
-
-Bukti foto bersifat opsional. Jika digunakan, foto dikompresi lalu disimpan secara lokal pada perangkat memakai `shared_preferences`; bukti ini belum diunggah ke backend Laravel.
-
-Perilaku tombol:
-
-- `Ambil Saja`: mengubah status laundry menjadi `collected`, tanpa mengubah kondisi pembayaran.
-- `Lunasi`: mengubah status laundry menjadi `collected`, pembayaran menjadi `paid`, dan nominal terbayar disamakan dengan total transaksi.
-
-Sebelum penyimpanan, aplikasi menampilkan dialog konfirmasi. Setelah berhasil, halaman kembali ke daftar Pengambilan sehingga transaksi tersebut tidak lagi tampil pada daftar transaksi belum diambil.
-
-Daftar Pengambilan direfresh otomatis setelah perubahan berhasil disimpan.
-
-### 17.11 Halaman Scan QR
-
-Halaman ini digunakan untuk scan QR code dari bon laundry.
-
-Fungsi:
-
-- membuka kamera
-- memilih gambar QR dari galeri
-- mendeteksi QR code
-- membandingkan hasil scan dengan nomor invoice transaksi yang ada di database
-- jika cocok, aplikasi langsung membuka halaman Pengambilan/Pelunasan transaksi tersebut
-- jika tidak ada, aplikasi menampilkan pesan `Transaksi dengan kode tersebut tidak ditemukan.`
-
-Flow:
-
-1. user masuk menu Scan QR
-2. user memilih kamera atau gambar dari galeri
-3. aplikasi membaca invoice
-4. aplikasi mencari transaksi yang punya invoice sama
-5. jika ada, halaman Pengambilan/Pelunasan dibuka otomatis
-
-Ini berguna untuk pengecekan transaksi tanpa mencari manual di list transaksi.
-
----
-
-### 17.12 Halaman Laporan
-
-Halaman laporan digunakan untuk melihat ringkasan performa usaha.
-
-Informasi yang ditampilkan:
-
-- Pendapatan Hari Ini
-- Pendapatan Bulan Ini
-- Total transaksi
-- Laundry diproses
-- Belum diambil
-- layanan terlaris
-
-Fungsi tombol:
-
-- `Export laporan` -> tombol yang sudah disiapkan, tetapi belum sepenuhnya dihubungkan ke export file PDF/Excel
-
-Fungsi halaman ini adalah memberikan gambaran performa untuk owner dan super owner agar bisa mengecek profit dan operasional laundry.
-
----
-
-### 17.13 Halaman Manajemen User
-
-Halaman ini terbatas untuk role owner/super owner.
-
-Fungsinya:
-
-- melihat daftar user akun
-- melihat role tiap user
-- mengatur status aktif/nonaktif user
-- menambah user baru
-- mengedit user
-
-Button penting:
-
-- tombol `Tambah` di bawah -> menambah user baru
-- switch aktif/nonaktif -> mengontrol status akun
-- tap card user -> edit profil dan role user
-
-Ini penting untuk kontrol hak akses dan pengelolaan karyawan laundry.
-
----
-
-### 17.14 Halaman Pengaturan
-
-Halaman pengaturan digunakan untuk mengatur data bisnis dan printer.
-
-Form yang ada:
-
-- Nama pengguna
-- Nomor telepon laundry
-- Alamat laundry
-- ukuran kertas struk
-- printer Bluetooth default
-
-Fungsi tombol:
-
-- `Pilih printer Bluetooth` -> menampilkan daftar printer yang sudah terpasang ke perangkat
-- `Simpan pengaturan` -> menyimpan konfigurasi ke local storage / settings repository
-
-Tujuannya:
-
-- menyesuaikan identitas usaha atau brand laundry
-- memastikan printer yang dipakai saat print bon benar
-- memastikan format struk sesuai kebutuhan
-
----
-
-### 17.15 Hubungan Antara Halaman-Halaman Utama
-
-Secara umum, alur navigasi utama aplikasi adalah:
-
-1. Splash Screen -> pengecekan session
-2. Login -> masuk ke dashboard
-3. Dashboard -> pilih menu
-4. Transaksi -> pilih pelanggan + layanan -> simpan transaksi
-5. Daftar transaksi -> klik transaksi -> detail transaksi
-6. Detail transaksi -> lihat informasi, hubungi pelanggan, cetak bon
-7. Pengambilan/Pelunasan -> ambil bukti foto, serahkan laundry, dan/atau lunasi
-7. Pelanggan dan Layanan -> data pendukung untuk transaksi
-8. Laporan -> ringkasan performa usaha
-9. Pengaturan -> konfigurasi printer dan profil usaha
-10. Manajemen User -> akses admin untuk role tertentu
-
-Dengan begitu, aplikasi ini masuk kategori POS + manajemen laundry yang memiliki alur bisnis yang jelas, bukan sekadar halaman statis.
-
----
-
-## 18. Sumber Utama dalam Proyek
-
-Beberapa file kunci yang menjadi referensi utama:
-
-- `laundry_app/README.md`
-- `laundry_app/lib/core/router/app_router.dart`
-- `laundry_app/lib/features/auth/presentation/providers/auth_providers.dart`
-- `laundry_app/lib/features/transactions/presentation/screens/transactions_screen.dart`
-- `laundry_app/lib/features/transactions/presentation/providers/transaction_providers.dart`
-- `laundry_app/lib/core/constants/app_constants.dart`
-- `laundry_app/lib/shared/enums/user_role.dart`
-- `D:\laragon\www\api-indafri-laundry\routes\api.php`
-- `D:\laragon\www\api-indafri-laundry\app\Http\Controllers\Api\AuthController.php`
-- `D:\laragon\www\api-indafri-laundry\app\Http\Controllers\Api\CustomerController.php`
-- `D:\laragon\www\api-indafri-laundry\app\Http\Controllers\Api\ServiceController.php`
-- `D:\laragon\www\api-indafri-laundry\app\Http\Controllers\Api\TransactionController.php`
-
-Dokumentasi ini dibuat untuk membantu mengingat kembali alur aplikasi, alur fitur, serta hubungan frontend-backend secara utuh.
+Informasi usaha, backup dan bukti mengandung data pelanggan: batasi akses, retensi dan salinan. Backup konfigurasi bukan strategi backup database.

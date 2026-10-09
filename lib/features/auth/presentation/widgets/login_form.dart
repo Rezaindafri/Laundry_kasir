@@ -143,7 +143,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
                 onChanged: (value) =>
                     setState(() => _rememberMe = value ?? true),
               ),
-              const Text('Ingat saya'),
+              const Text('Ingat saya selama 30 hari'),
             ],
           ),
           const SizedBox(height: 12),

@@ -11,9 +11,10 @@ abstract class AppConstants {
 
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 15);
+  static const Duration rememberLoginDuration = Duration(days: 30);
 
   /// Jika true, seluruh AuthRemoteDataSource memakai data dummy
   /// (tidak melakukan network call). Set false saat backend siap.
   static const bool useMockApi = false;
-
+  
 }

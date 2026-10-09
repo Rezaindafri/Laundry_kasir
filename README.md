@@ -1,169 +1,126 @@
 # KarsaOne
 
-Tahap 1: **Setup Project & Arsitektur Inti**. Fondasi Clean Architecture,
-autentikasi JWT (mock), role-based routing, dan tema Material 3 sudah
-berjalan penuh. Modul bisnis (Transaksi, Pelanggan, Layanan, dll)
-menyusul di tahap berikutnya di atas fondasi ini.
+Aplikasi kasir dan manajemen operasional berbasis Flutter dengan REST API Laravel. Branding sudah KarsaOne; paket, folder, tabel, dan istilah layanan laundry yang ada dipertahankan agar tidak memutus integrasi/data.
 
-## ✅ Yang sudah jadi di tahap ini
+Terakhir diverifikasi: **9–10 Oktober 2026**. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi audit menemukan bug dan celah keamanan yang masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
 
-- **Clean Architecture** per fitur: `data / domain / presentation`
-- **State management**: Riverpod (Provider + AsyncNotifier)
-- **Routing**: go_router dengan redirect otomatis berbasis session & role
-- **Auth**: Login, Logout, Remember Login, Auto Login, Splash Screen,
-  Session Management — saat ini memakai **mock API** (belum ada backend)
-- **3 Role**: Super Owner, Owner, Kasir — hak akses diatur di
-  `lib/shared/enums/user_role.dart` dan otomatis mempengaruhi menu di drawer
-- **Tema**: Material Design 3, warna hijau `#2E7D32`/`#66BB6A`, rounded
-  corner, soft shadow, sesuai spesifikasi
-- **Dashboard** placeholder per role dengan kartu statistik (dummy data)
+## Lokasi dan stack
 
-## 🔑 Akun dummy untuk testing (mock API)
+| Bagian | Lokasi / teknologi |
+| --- | --- |
+| Flutter | C:\Android\ProjekOM\laundry_app; Riverpod, GoRouter, Dio, Material 3 |
+| Laravel | D:\laragon\www\api-indafri-laundry; PHP ^8.3, Laravel ^13.8, Sanctum ^4.0 |
+| Database | MySQL untuk aplikasi; SQLite :memory: khusus pengujian |
+| Branding | KarsaOne, aksen biru, permukaan putih, logo dan splash animasi |
+| Konfigurasi | lib/core/constants/app_constants.dart; useMockApi = false |
 
-| Username     | Password    | Role        |
-|--------------|-------------|-------------|
-| `superowner` | `super123`  | Super Owner |
-| `owner`      | `owner123`  | Owner       |
-| `kasir`      | `kasir123`  | Kasir       |
+URL saat audit masih HTTP/IP LAN untuk pengembangan. HP mengakses Laravel melalui jaringan, bukan langsung ke MySQL. Deployment perlu HTTPS dan document root Laravel public/.
 
-Mock ada di `lib/features/auth/data/datasources/auth_remote_datasource.dart`
-(`AuthRemoteDataSourceMock`). Saat backend Laravel siap, cukup ubah
-`AppConstants.useMockApi = false` di `lib/core/constants/app_constants.dart`
-dan set `baseUrl` — tidak ada kode lain yang perlu diubah karena repository
-sudah bicara lewat interface `AuthRemoteDataSource`.
+## Peran dan fitur saat ini
 
-## 📁 Struktur folder
+| Peran | Cakupan |
+| --- | --- |
+| Kasir / User | Pelanggan baru, transaksi, DP/pelunasan, pengambilan, bon/QR, dashboard operasional kelompoknya. Tidak mengelola akun atau mengubah username/password sendiri. |
+| Owner | Operasional kelompok sendiri, layanan/pelanggan, akun kasir sendiri, dashboard/filter, laporan pembayaran/CSV, pengeluaran, riwayat perubahan, konfigurasi usaha. |
+| Super Owner | Struktur Owner → Kasir, pembuatan/pemindahan/aktivasi akun, kebijakan akun dan pengaturan sistem. **Tidak memiliki dashboard monitoring transaksi atau laporan operasional.** |
 
-```
-lib/
-├── core/                   # Hal lintas fitur: config, network, error, router, utils
-│   ├── config/theme/       # AppColors, AppTextStyles, AppTheme (M3)
-│   ├── constants/          # AppConstants, StorageKeys
-│   ├── error/              # Exceptions (data layer) & Failures (domain layer)
-│   ├── network/            # DioClient (interceptor JWT), ApiEndpoints
-│   ├── router/             # GoRouter + redirect logic
-│   └── utils/              # Result<T> (pengganti Either), Validators
-├── shared/
-│   ├── enums/               # UserRole + hak akses per role
-│   └── widgets/              # AppButton, AppTextField (reusable di semua fitur)
-├── features/
-│   ├── auth/
-│   │   ├── data/            # Model (Freezed), datasource (remote+local), repository impl
-│   │   ├── domain/          # Entity, repository interface, use case
-│   │   └── presentation/    # Provider (Riverpod), Splash & Login screen
-│   └── dashboard/
-│       └── presentation/    # Dashboard shell (drawer role-based) + 3 dashboard screen
-└── main.dart
-```
+Data operasional menggunakan owner_id. Pemeriksaan izin dilakukan di Laravel, bukan hanya menu Flutter. Tes membuktikan penolakan beberapa akses lintas-owner; pemetaan seluruh data lama di database nyata tetap perlu diverifikasi sebelum deployment.
 
-Pola ini yang dipakai berulang untuk setiap modul baru (Transaksi,
-Pelanggan, Layanan, dst.) — silakan contoh fitur `auth` sebagai template.
+Fitur yang telah terhubung ke Laravel:
 
-## 🚀 Cara menjalankan
+- Login Sanctum; pesan salah kredensial, akun nonaktif, dan kegagalan umum.
+- CRUD pelanggan/layanan sesuai role; filter dan pagination transaksi server-side.
+- Harga dan estimasi berasal dari layanan backend. DP dan pelunasan dicatat sebagai event pembayaran.
+- “Lunasi Saja” tidak mengambil barang; pengambilan melalui endpoint collection, bukti foto opsional.
+- Status berbasis waktu di backend dan scheduler laundry:sync-statuses.
+- Dashboard Owner/Kasir, laporan pembayaran bertanggal, ekspor CSV, filter akun termasuk Me.
+- Pengeluaran Owner dengan tanggal/waktu pilihan dan rincian laporan; belum ada status rencana/dibayar terpisah.
+- Audit perubahan akun, transaksi dan pengeluaran; profil/settings usaha.
+- Backup/restore **konfigurasi usaha**, bukan backup database/transaksi.
+- Bon foto/WhatsApp dan printer Bluetooth memiliki implementasi Android; pengujian perangkat nyata masih diperlukan.
 
-Project ini dibuat manual (tanpa `flutter create`) karena SDK Flutter
-tidak tersedia di lingkungan pembuatan file. Sebelum dijalankan:
+“Ingat saya” dibatasi 30 hari lokal, dan token Laravel juga kedaluwarsa setelah 30 hari. Startup memverifikasi sesi melalui `/auth/me`, bukan mempercayai role akun lokal.
 
-```bash
-# 1. Buat scaffolding native (android/, ios/, dsb) di folder project ini.
-#    Perintah ini AMAN, tidak akan menimpa folder lib/ yang sudah ada.
-flutter create .
+## Menjalankan pengembangan
 
-# 2. Install dependency
+Scaffolding Android/iOS/web sudah ada. Tidak perlu membuat ulang proyek dengan flutter create.
+
+Di Flutter:
+
+~~~powershell
+cd C:\Android\ProjekOM\laundry_app
 flutter pub get
-
-# 3. Generate file Freezed & JSON serialization (WAJIB, karena
-#    user_model.dart, dsb menggunakan @freezed / @JsonSerializable)
 dart run build_runner build --delete-conflicting-outputs
-
-# 4. Jalankan aplikasi
 flutter run
-```
+~~~
 
-Alur: **Splash Screen** (cek auto-login ±1 detik) → jika belum login ke
-**Login Screen** → setelah sukses otomatis diarahkan ke **Dashboard**
-sesuai role.
+Perintah tersebut adalah panduan setup, bukan daftar perintah yang dijalankan audit. Pilih baseUrl sesuai server lokal. Jangan menaruh password/API key rahasia di konstanta Flutter.
 
-## 🗺️ Roadmap tahap berikutnya
+Backend memerlukan .env lokal privat, PHP/ekstensi sesuai Composer, serta MySQL aktif. Siapkan dependensi dari composer.lock. Untuk database berisi data: tinjau migrasi, siapkan backup terpisah, lalu gunakan migrasi maju setelah persetujuan; jangan reset database atau menjalankan seeder akun demo di produksi.
 
-Urutan yang disarankan (masing-masing mengikuti pola Clean Architecture
-yang sama seperti `auth`):
+Scheduler terdaftar setiap menit di routes/console.php. Hosting perlu memanggil php artisan schedule:run tiap menit; interval cron lebih jarang menunda pembaruan saat tidak ada request. Jangan menjalankannya saat audit read-only terhadap database nyata karena perintah itu memperbarui status.
 
-1. **Master Data**: Pelanggan & Layanan Laundry (CRUD + mock API)
-2. **Transaksi (POS)**: form transaksi, kalkulasi otomatis, invoice generator
-3. **QR Code**: generate QR invoice + scan QR untuk buka detail transaksi
-4. **Status Laundry**: state machine Diterima → ... → Sudah Diambil
-5. **Bluetooth Thermal Printer**: cetak bon 58mm sesuai format yang ditentukan
-6. **Riwayat Transaksi & Laporan**: filter, export PDF/Excel
-7. **Manajemen User**: khusus Owner/Super Owner
-8. **Pengaturan**: profil laundry, printer default, backup/restore
-9. **Backend Laravel**: REST API + MySQL menggantikan mock (kontrak
-   endpoint sudah didefinisikan di `lib/core/network/api_endpoints.dart`)
+## Hasil verifikasi terbaru
 
-lanjutan udah selesai sudah menyelesaikan 5 tahap implementasi lokal/mock.
+| Pemeriksaan | Hasil |
+| --- | --- |
+| PHPUnit backend + regresi baru | **71 lulus**, 452 assertions, SQLite di memori |
+| Tes audit tambahan dengan token login asli | **13/13 lulus**, 105 assertions; sebelumnya 9 kasus gagal |
+| Flutter unit/widget | **31 lulus**, termasuk sesi, login/modal dan respons lama |
+| Analisis Dart, lib + test | 0 error, 12 warning lama; file autentikasi/interceptor/tes perubahan lolos pemeriksaan terarah |
+| Composer audit paket runtime dari lockfile | **14 advisori pada 3 paket**; tidak dilakukan upgrade |
 
-1. Fondasi aplikasi Clean Architecture, Riverpod, GoRouter, Material 3 hijau. Auth mock: Splash, Login, Logout, JWT mock, Remember Login. Tiga role: Super Owner, Owner, Kasir; dashboard dan menu menyesuaikan akses.
+Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan data sintetis. Belum ada pengujian end-to-end Flutter → server hosting nyata atau seluruh perangkat.
 
-2. Master data Pelanggan: lihat, tambah, edit. Layanan laundry: lihat, tambah, edit, harga, estimasi, per Kg/per Item.
+## Penanganan audit dan pekerjaan tersisa
 
-3. POS & transaksi Transaksi baru: pelanggan, layanan, berat/jumlah, Express, catatan. Hitung subtotal, biaya Express, total. Metode pembayaran Tunai/QRIS/Transfer serta status Belum Bayar/DP/Lunas. Detail dan update status laundry.
+- Logout/revokasi, expiry token, rate limit login dan validasi sesi Flutter sudah diperbaiki.
+- Token contoh disanitasi dan fingerprint token terpapar diblokir Sanctum. **Riwayat Git lama belum dibersihkan; tidak mencabut baris token nyata atau merotasi kredensial.**
+- Status `collected` terminal; pembayaran/pengambilan dan scheduler membaca ulang dengan row lock. Retry saldo kumulatif tidak menambah ledger/audit; request paralel MySQL belum diuji.
+- Restore atomik, guard downgrade Owner bertanggungan, pesan error generik dan escape formula CSV sudah diuji di Laravel.
+- Batas tanggal UTC/WIB, file bukti public, cache/atribusi legacy dan konfigurasi hosting masih perlu penanganan.
+- Express Flutter belum cocok dengan kontrak harga backend; controller scanner belum dipasang ke widget kamera.
+- Versi paket yang terkunci memerlukan pembaruan keamanan terencana.
 
-4. Riwayat & QR Daftar transaksi sebagai riwayat. QR invoice sebagai kode pengambilan. Scan QR dengan kamera untuk membuka transaksi.
+Lihat [hasil penanganan terbaru](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) dan [audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md). Tahap keamanan/integritas ini tidak menyelesaikan seluruh temuan atau membuktikan aplikasi siap produksi.
 
-5. Administrasi & cetak bon Laporan ringkas pendapatan/operasional dari transaksi. Manajemen akun Owner/Kasir berbasis role. Pengaturan profil laundry, ukuran kertas, dan MAC printer default. Cetak bon ESC/POS 58 mm melalui Bluetooth.
+## Pengujian aman
 
+Flutter:
 
+~~~powershell
+flutter test --no-pub
+dart analyze lib test
+~~~
 
-TERBARU 02/02/2026
-feat: Integrasi Penuh API Transaksi, Master Data, dan Logika Status Otomatis
+Backend, dalam PowerShell baru agar variabel testing tidak terbawa ke proses aplikasi:
 
-Pembaruan ini mencakup penyelesaian integrasi aplikasi mobile (Flutter) dengan backend (Laravel), perbaikan UI/UX pada modul transaksi, serta pembersihan kode. Aplikasi sekarang sudah berjalan lancar dan aman dengan data dari server lokal.
+~~~powershell
+cd D:\laragon\www\api-indafri-laundry
+$env:APP_ENV = 'testing'
+$env:DB_CONNECTION = 'sqlite'
+$env:DB_DATABASE = ':memory:'
+$env:DB_URL = ''
+$env:CACHE_STORE = 'array'
+$env:SESSION_DRIVER = 'array'
+$env:QUEUE_CONNECTION = 'sync'
+php vendor/bin/phpunit --do-not-cache-result
+php vendor/bin/phpunit --do-not-cache-result C:\Android\ProjekOM\laundry_app\tools\audit\BackendSecurityAuditTest.php
+~~~
 
-feat: Integrasi Penuh API Transaksi, Master Data, dan Logika Status Otomatis
+Jangan gunakan perintah tersebut jika bootstrap/cache/config.php masih mengarahkan testing ke database aplikasi. Tes audit/regresi keamanan baru menolak konfigurasi selain SQLite di memori. Tes diagnostik terpisah kini lulus setelah perbaikan kasusnya; tidak menggantikan E2E atau pengujian concurrency MySQL.
 
-Pembaruan skala besar ini mencakup penyelesaian integrasi aplikasi Flutter dengan backend Laravel, perbaikan UI/UX, serta penyempurnaan alur transaksi. Aplikasi sekarang sudah berjalan stabil menggunakan data dari server lokal.
+Pemeriksaan advisori tanpa upgrade:
 
-### 🔗 Integrasi Backend, Auth & Konfigurasi
-* Mengatur endpoint API ke backend Laravel dan mengaktifkan izin internet serta cleartext traffic di Android.
-* Mengubah IP backend Flutter menjadi `192.168.1.12`.
-* Memperbaiki behavior penyimpanan token di secure storage; sesi kini tetap berlaku selama user aktif meski fitur "remember me" dimatikan, mencegah request API gagal (401)[cite: 3].
-* Bug logic kecil di repository transaksi berhasil dibetulkan.
+~~~powershell
+composer audit --locked --no-dev --format=json
+~~~
 
-### 👥 Master Data Pelanggan
-* Mengubah sumber data pelanggan dari mock/dummy menjadi data langsung dari API backend[cite: 3].
-* Menyesuaikan parsing data pelanggan dari format response API[cite: 3].
-* Menambahkan alur buka detail pelanggan langsung dari daftar pelanggan dan memperjelas tombol edit pelanggan[cite: 3].
-* Menambahkan opsi "Tambah pelanggan baru" langsung dari form pembuatan transaksi[cite: 3].
+## Dokumen dan Git
 
-### 📦 Master Data Layanan
-* Model layanan kini mendukung field satuan estimasi dengan enum[cite: 4].
-* UI owner sekarang bisa memilih satuan saat membuat atau menyunting layanan[cite: 4].
-* Memperbaiki error navigasi kembali (back navigation) saat membuka halaman tambah layanan di Android[cite: 4].
+- [Dokumentasi teknis terbaru](DOKUMENTASI_PROYEK_LAUNDRY.md).
+- [Audit integrasi dan keamanan](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md).
+- [Penanganan prioritas dan hasil regresi](docs/PERBAIKAN_PRIORITAS_2026-10-10.md).
+- Backend_Needed.md: catatan historis kebutuhan; verifikasi terhadap kode/dokumen terbaru sebelum mengikutinya.
 
-### 🛒 Modul Transaksi & Payload
-* Memperbaiki payload transaksi agar kompatibel dengan validasi Laravel, memastikan pengiriman `customer_id`, `payment_status`, dan `services` sebagai array yang memuat harga per item (`price`) dan kuantitas (`qty`)[cite: 3].
-* Menyesuaikan parser transaksi Flutter supaya response create/update ikut memuat relasi data `customer` dan `transactionDetails.service` dari backend[cite: 4].
-* Provider transaksi kini otomatis me-refresh ulang daftar dari backend setelah transaksi berhasil dibuat[cite: 4].
-* Menampilkan estimasi layanan pada UI transaksi dan juga pada bon/struk[cite: 4].
-* Memastikan field `estimation_hours` dan `estimation_unit` tetap kompatibel dengan payload backend[cite: 4].
-
-### 🔄 Logika Status Otomatis & UI
-* Status transaksi sekarang berkembang otomatis berdasarkan estimasi layanan yang dikonversi ke jam: diproses (sebelum estimasi selesai), selesai (saat estimasi selesai), dan telat (melewati batas)[cite: 4].
-* Menambahkan tombol "Lunas & Sudah Diambil" dengan logika cerdas: 
-  - Jika sudah lunas, tombol cukup menandai barang sudah diambil[cite: 4].
-  - Jika belum lunas, tombol menandai proses pengambilan namun tetap mempertahankan status pembayaran sebelumnya[cite: 4].
-* Sinkronisasi filter pencarian dan chip status di layar riwayat transaksi agar memakai status yang dihitung otomatis[cite: 4].
-
-### 🛠️ Pengujian & Validasi
-* Lolos pengecekan `dart analyze` tanpa ada error logic/style untuk file-file transaksi[cite: 4].
-* Mengganti properti Flutter yang deprecated dan merapikan syntax[cite: 4].
-* Lolos validasi `php -l` untuk controller Laravel tanpa syntax error[cite: 4].
-* Menambahkan uji regresi (test) untuk memastikan payload transaksi tetap sesuai struktur backend; semua pengujian domain entitas lolos.
-
-
-### Yang kau coba ganti
-Jadi nanti itu kau perlu setup ulang lagi, karena kan ini perlu backend. semisal kau gak mau pasang backend, kau bisa pakai dulu dummynya. Caranya:
-* masuk ke 'transaction_providers.dart'
-* Ubah status 'useMockApi' dari 'const bool useMockApi = false;' menjadi 'const bool useMockApi = true;'
-
-nah ntar tinggal jalani kek biasa
+.gitignore diperluas pada kedua repositori untuk varian .env, kunci privat/signing, konfigurasi HTTP privat, cache/log dan backup lokal. Lockfile dependensi, source, migrasi, aset aplikasi dan tes tetap disimpan di Git. Ignore tidak menghapus file yang telanjur tracked.

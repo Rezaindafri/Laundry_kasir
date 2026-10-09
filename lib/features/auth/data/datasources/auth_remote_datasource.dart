@@ -14,11 +14,11 @@ abstract class AuthRemoteDataSource {
   });
 
   Future<void> logout();
+  Future<UserModel> getCurrentUser();
 }
 
 /// Implementasi asli memakai Dio ke backend Laravel.
-/// Aktifkan dengan mengganti provider di auth_providers.dart
-/// (set AppConstants.useMockApi = false setelah backend siap).
+/// Provider memilih implementasi ini ketika useMockApi bernilai false.
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   final Dio dio;
 
@@ -28,9 +28,11 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     final normalized = Map<String, dynamic>.from(userJson);
 
     normalized['id'] = normalized['id']?.toString() ?? 'unknown';
+    normalized['owner_id'] = normalized['owner_id']?.toString();
     normalized['is_active'] = normalized['is_active'] ?? true;
-    normalized['avatar_url'] = normalized['avatar_url'] ?? null;
-    normalized['created_at'] = normalized['created_at'] ?? DateTime.now().toIso8601String();
+    normalized['avatar_url'] = normalized['avatar_url'];
+    normalized['created_at'] =
+        normalized['created_at'] ?? DateTime.now().toIso8601String();
 
     return normalized;
   }
@@ -58,14 +60,17 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       );
     } on DioException catch (e) {
       if (e.error is UnauthorizedException) {
-        throw const ServerException('Username atau password salah.');
+        throw const ServerException(
+          'Username atau password salah.',
+          statusCode: 401,
+        );
       }
       throw ServerException(
         e.response?.data?['message'] ?? 'Gagal terhubung ke server.',
         statusCode: e.response?.statusCode,
       );
     } catch (e) {
-      throw ServerException('Gagal memproses data: $e');
+      throw const ServerException('Terjadi kesalahan, coba lagi nanti.');
     }
   }
 
@@ -77,6 +82,25 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       throw ServerException(
         e.response?.data?['message'] ?? 'Gagal logout dari server.',
         statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  @override
+  Future<UserModel> getCurrentUser() async {
+    try {
+      final response = await dio.get(ApiEndpoints.me);
+      final user = normalizeUserJson(
+        Map<String, dynamic>.from(response.data['data'] as Map),
+      );
+      if (user['is_active'] != true) {
+        throw const ServerException('Akun dinonaktifkan.', statusCode: 403);
+      }
+      return UserModel.fromJson(user);
+    } on DioException catch (error) {
+      throw ServerException(
+        'Sesi tidak dapat diverifikasi.',
+        statusCode: error.response?.statusCode,
       );
     }
   }
@@ -134,13 +158,17 @@ class AuthRemoteDataSourceMock implements AuthRemoteDataSource {
 
     final account = _dummyAccounts[username.trim().toLowerCase()];
     if (account == null || account['password'] != password) {
-      throw const ServerException('Username atau password salah.');
+      throw const ServerException(
+        'Username atau password salah.',
+        statusCode: 401,
+      );
     }
 
     final userJson = account['user'] as Map<String, dynamic>;
     return AuthResponseModel(
       accessToken: 'mock-access-token-${DateTime.now().millisecondsSinceEpoch}',
-      refreshToken: 'mock-refresh-token-${DateTime.now().millisecondsSinceEpoch}',
+      refreshToken:
+          'mock-refresh-token-${DateTime.now().millisecondsSinceEpoch}',
       user: UserModel.fromJson(userJson),
     );
   }
@@ -149,6 +177,12 @@ class AuthRemoteDataSourceMock implements AuthRemoteDataSource {
   Future<void> logout() async {
     await Future.delayed(const Duration(milliseconds: 300));
     // Tidak ada server call pada mode mock.
+  }
+
+  @override
+  Future<UserModel> getCurrentUser() async {
+    // Only AuthRepository's explicit development mock path uses local data.
+    throw const ServerException('Mode mock tidak memiliki server sesi.');
   }
 }
 

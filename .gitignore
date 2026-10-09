@@ -11,6 +11,19 @@ android/key.properties
 *.jks
 *.keystore
 .env
+.env.*
+!.env.example
+!.env.*.example
+auth.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+http-client.private.env.json
+*.private.env.json
+api_test.local.http
+.http-client/
 google-services.json
 .metadata
 
@@ -21,6 +34,22 @@ google-services.json
 
 .DS_Store
 .vscode/
+.gradle/
+*.log
+*.hprof
+hs_err_pid*
+replay_pid*
+coverage/
+
+# Local data exports/backups must not be committed; source fixtures stay tracked.
+/backups/
+/private/
+*.sql.gz
+*.dump
+*.bak
+*.sqlite
+*.sqlite3
+*.db
 
 android/app/debug
 android/app/profile
