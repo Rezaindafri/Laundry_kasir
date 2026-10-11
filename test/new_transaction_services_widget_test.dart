@@ -92,6 +92,21 @@ Future<void> _addLine(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _choosePayment(WidgetTester tester, String label) async {
+  final status = find.byType(DropdownButtonFormField<PaymentStatus>);
+  await _reveal(tester, status);
+  await tester.tap(status);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
+}
+
+final _paymentAmount =
+    find.widgetWithText(TextFormField, 'Pembayaran masuk (Rp)');
+
+String _amountText(WidgetTester tester) =>
+    tester.widget<TextFormField>(_paymentAmount).controller!.text;
+
 void main() {
   setUpAll(() => initializeDateFormatting('id_ID'));
 
@@ -145,8 +160,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('DP').last);
     await tester.pumpAndSettle();
-    final deposit = find.widgetWithText(TextFormField, 'Nominal DP (Rp)');
+    final deposit = find.widgetWithText(TextFormField, 'Pembayaran masuk (Rp)');
     await _reveal(tester, deposit);
+    expect(tester.widget<TextFormField>(deposit).controller!.text, '43750');
     await tester.enterText(deposit, '10000');
     await tester.tap(find.text('Simpan Transaksi'));
     await tester.pumpAndSettle();
@@ -211,6 +227,117 @@ void main() {
     await tester.tap(find.text('Simpan Transaksi'));
     await tester.pumpAndSettle();
     expect(repository.calls, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('new transaction autofills full bill and sends a paid order',
+      (tester) async {
+    final repository = _OrderFixture();
+    await _open(tester, repository);
+    await _select(tester, 0, 'Cuci cepat');
+    await tester.enterText(_quantity(0), '2');
+    await _choosePayment(tester, 'Lunas');
+    await _reveal(tester, _paymentAmount);
+    expect(_amountText(tester), '20000');
+    await tester.tap(_paymentAmount);
+    await tester.pump();
+    expect(tester.widget<TextFormField>(_paymentAmount).controller!.selection,
+        const TextSelection(baseOffset: 0, extentOffset: 5));
+    await tester.tap(find.text('Simpan Transaksi'));
+    await tester.pumpAndSettle();
+    expect(repository.submitted!.paidAmount, 20000);
+    expect(repository.submitted!.paymentStatus, PaymentStatus.paid);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'automatic payment follows quantity, Express, added and removed services',
+      (tester) async {
+    final repository = _OrderFixture();
+    await _open(tester, repository);
+    await _select(tester, 0, 'Cuci cepat');
+    await tester.enterText(_quantity(0), '2');
+    await _choosePayment(tester, 'Lunas');
+    await _reveal(tester, _quantity(0));
+    await tester.enterText(_quantity(0), '3');
+    await _reveal(tester, _paymentAmount);
+    expect(_amountText(tester), '30000');
+    await _reveal(tester, find.byType(SwitchListTile));
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    await _reveal(tester, _paymentAmount);
+    expect(_amountText(tester), '37500');
+    await _addLine(tester);
+    await _select(tester, 1, 'Barang');
+    await _reveal(tester, _paymentAmount);
+    expect(_amountText(tester), '43750');
+    final firstCard =
+        find.ancestor(of: _picker(0), matching: find.byType(Card));
+    await _reveal(tester, firstCard);
+    await tester.tap(find.descendant(
+        of: firstCard, matching: find.byTooltip('Hapus layanan dari bon')));
+    await tester.pumpAndSettle();
+    await _reveal(tester, _paymentAmount);
+    expect(_amountText(tester), '37500');
+    await tester.tap(find.text('Simpan Transaksi'));
+    await tester.pumpAndSettle();
+    expect(repository.submitted!.total, 37500);
+    expect(repository.submitted!.paidAmount, 37500);
+    expect(repository.submitted!.paymentStatus, PaymentStatus.paid);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'manual initial payment remains intact after bill changes and sends DP',
+      (tester) async {
+    final repository = _OrderFixture();
+    await _open(tester, repository);
+    await _select(tester, 0, 'Cuci cepat');
+    await tester.enterText(_quantity(0), '2');
+    await _choosePayment(tester, 'Lunas');
+    await _reveal(tester, _paymentAmount);
+    await tester.enterText(_paymentAmount, '5000');
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<DropdownButtonFormField<PaymentStatus>>(
+                find.byType(DropdownButtonFormField<PaymentStatus>))
+            .initialValue,
+        PaymentStatus.downPayment);
+    await _reveal(tester, _quantity(0));
+    await tester.enterText(_quantity(0), '3');
+    await _reveal(tester, _paymentAmount);
+    expect(_amountText(tester), '5000');
+    await tester.tap(find.text('Simpan Transaksi'));
+    await tester.pumpAndSettle();
+    expect(repository.submitted!.total, 30000);
+    expect(repository.submitted!.paidAmount, 5000);
+    expect(repository.submitted!.paymentStatus, PaymentStatus.downPayment);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'cleared or excessive initial payment is rejected; unpaid stays unpaid',
+      (tester) async {
+    final repository = _OrderFixture();
+    await _open(tester, repository, size: const Size(320, 640));
+    await _select(tester, 0, 'Cuci cepat');
+    await tester.enterText(_quantity(0), '2');
+    await _choosePayment(tester, 'DP');
+    await _reveal(tester, _paymentAmount);
+    expect(_amountText(tester), '20000');
+    for (final invalid in ['', '0', '20001']) {
+      await tester.enterText(_paymentAmount, invalid);
+      await tester.tap(find.text('Simpan Transaksi'));
+      await tester.pumpAndSettle();
+      expect(repository.calls, 0);
+    }
+    await _choosePayment(tester, 'Belum Bayar');
+    expect(_paymentAmount, findsNothing);
+    await tester.tap(find.text('Simpan Transaksi'));
+    await tester.pumpAndSettle();
+    expect(repository.submitted!.paidAmount, 0);
+    expect(repository.submitted!.paymentStatus, PaymentStatus.unpaid);
     expect(tester.takeException(), isNull);
   });
 }

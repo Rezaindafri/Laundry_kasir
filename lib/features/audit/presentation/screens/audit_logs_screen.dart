@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/page_visibility_refresh.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -119,17 +120,28 @@ class AuditLogsScreen extends ConsumerStatefulWidget {
 
 class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
   int _page = 1;
+  late final bool _cached;
+
+  @override
+  void initState() {
+    super.initState();
+    _cached = ref.exists(_auditLogsProvider(1));
+  }
 
   Future<void> _refresh() async {
     setState(() => _page = 1);
-    await ref.refresh(_auditLogsProvider(1).future);
+    ref.invalidate(_auditLogsProvider(1));
+    await ref.read(_auditLogsProvider(1).future);
   }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(sessionProvider).valueOrNull;
     final logs = ref.watch(_auditLogsProvider(_page));
-    return Scaffold(
+    return PageVisibilityRefresh(refreshOnMount: _cached, onVisible: () async {
+      ref.invalidate(_auditLogsProvider(_page));
+      await ref.read(_auditLogsProvider(_page).future);
+    }, child: Scaffold(
       drawer: user == null ? null : AppNavigationDrawer(user: user),
       appBar: AppBar(title: const Text('Riwayat Perubahan')),
       body: RefreshIndicator(
@@ -195,7 +207,7 @@ class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
                 ),
         ),
       ),
-    );
+    ));
   }
 }
 

@@ -6,9 +6,10 @@ import '../providers/transaction_providers.dart';
 /// Bytes are downloaded with the API's Bearer interceptor, never a public URL
 /// or a token in the URL. The auto-disposed provider follows the active session.
 class TransactionProofDialog extends ConsumerWidget {
-  const TransactionProofDialog({required this.transactionId, super.key});
+  const TransactionProofDialog({required this.transactionId, this.detailId, super.key});
 
   final String transactionId;
+  final String? detailId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => AlertDialog(
@@ -16,7 +17,8 @@ class TransactionProofDialog extends ConsumerWidget {
         content: SizedBox(
           width: 480,
           height: 320,
-          child: ref.watch(transactionProofProvider(transactionId)).when(
+          child: (detailId == null ? ref.watch(transactionProofProvider(transactionId))
+              : ref.watch(transactionLineProofProvider((transactionId, detailId!)))).when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (_, __) => Center(
                   child: Column(
@@ -27,9 +29,10 @@ class TransactionProofDialog extends ConsumerWidget {
                         textAlign: TextAlign.center,
                       ),
                       TextButton(
-                        onPressed: () => ref.invalidate(
-                          transactionProofProvider(transactionId),
-                        ),
+                        onPressed: () {
+                          if (detailId == null) ref.invalidate(transactionProofProvider(transactionId));
+                          else ref.invalidate(transactionLineProofProvider((transactionId, detailId!)));
+                        },
                         child: const Text('Coba lagi'),
                       ),
                     ],

@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 abstract class TransactionRepository {
   Future<Result<List<TransactionEntity>>> getTransactions();
+  Future<Result<TransactionEntity>> getById(String id);
   Future<Result<TransactionPageEntity>> getTransactionsPage(
     Map<String, dynamic> query,
   );

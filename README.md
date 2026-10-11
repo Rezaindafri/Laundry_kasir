@@ -2,7 +2,7 @@
 
 Aplikasi kasir dan manajemen operasional berbasis Flutter dengan REST API Laravel. Branding sudah KarsaOne; paket, folder, tabel, dan istilah layanan laundry yang ada dipertahankan agar tidak memutus integrasi/data.
 
-Terakhir diverifikasi: backend **9–10 Oktober 2026**, Flutter **11 Oktober 2026**. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi audit menemukan bug dan celah keamanan yang masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
+Terakhir diverifikasi: backend dan Flutter **11 Oktober 2026**. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi beberapa temuan audit dan verifikasi deployment masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
 
 ## Lokasi dan stack
 
@@ -34,7 +34,13 @@ Fitur yang telah terhubung ke Laravel:
 - Form Transaksi Baru memakai satu bagian Layanan: satu kartu awal, kartu tambahan seragam lewat tombol Tambah layanan, dan Express di bawah seluruh daftar. Minimal satu layanan tetap wajib.
 - Pilihan pelanggan/layanan mengikuti pemuatan API, bukan salinan daftar kosong saat pencarian dibuka. Tersedia status memuat/gagal/kosong, coba lagi, dan tombol perbarui tanpa menutup pencarian. Nama diurutkan A–Z tanpa memperhitungkan nomor HP; kartu layanan terpilih juga A–Z dengan jumlah/berat tetap melekat pada layanan.
 - “Bayar Saja” menerima nominal tambahan, metode dan catatan tanpa mengambil barang. DP/pelunasan dicatat sebagai event pembayaran pada waktu uang diterima.
+- Owner mengatur QRIS dan beberapa rekening melalui Setting → Tujuan pembayaran. Pilihan QRIS/transfer pada Transaksi Baru, Bayar Saja dan Bayar & Ambil menampilkan gambar QRIS atau bank/nomor rekening/pemilik; tunai tidak berubah. Rekening dienkripsi di database Laravel; gambar QRIS privat dan akses dibatasi kelompok Owner/Kasir. Pilihan tujuan tersimpan pada ledger pembayaran, bukan hanya UI.
+- Nominal pembayaran terisi otomatis: total tagihan di Transaksi Baru, sisa seluruh tagihan di Bayar Saja, dan kebutuhan bayar layanan terpilih setelah DP di Bayar & Ambil. Tap memilih seluruh angka otomatis agar ketikan menggantinya; nominal manual tidak ditimpa perubahan layanan/berat/Express. Pembayaran awal penuh menjadi Lunas, sebagian menjadi DP; Belum Bayar tetap tanpa pembayaran.
 - Pengambilan dapat bertahap per layanan yang sudah siap; DP sebelumnya diperhitungkan dan bon baru ditutup setelah semua layanan diambil. Foto tetap opsional dan tersimpan per pengambilan.
+- Setelah pembayaran/pengambilan berhasil, aplikasi kembali ke pencarian Pengambilan dan memuat ulang query backend. Transaksi yang seluruhnya diambil hilang dari daftar; pembayaran saja/pengambilan sebagian tetap muncul dengan status terbaru. Pencarian dan filter halaman asal dipertahankan, dan Back tidak membuka ulang formulir yang sudah selesai.
+- Daftar transaksi/Pengambilan dapat ditarik ke bawah untuk refresh, termasuk saat kosong, pendek atau gagal dimuat. Respons pagination dari query lama diabaikan setelah refresh; halaman berikutnya tetap dapat dimuat otomatis saat scroll atau melalui tombol.
+- Halaman data dimuat ulang saat dibuka/dikunjungi kembali, termasuk perpindahan tab dan Back dari halaman lain. Filter/pencarian/draft tetap dipertahankan; menutup dialog atau bottom sheet tidak memicu reload halaman induk. Ini refresh berbasis navigasi, bukan websocket atau polling background.
+- Detail Transaksi mengambil detail langsung dari Laravel dan menampilkan bagian Bukti pengambilan (pratinjau + foto per layanan) serta Riwayat pembayaran (tanggal, metode, tujuan dan pencatat bila tersedia). Foto yang sudah ada adalah bukti pengambilan, bukan bukti transfer; foto tetap opsional. Data lama tanpa informasi diberi keterangan, tidak ditebak.
 - Estimasi layanan boleh 0/kosong untuk barang tanpa proses: langsung siap, tanpa tenggat keterlambatan. Bon cetak/gambar menampilkan estimasi masing-masing layanan.
 - Status berbasis waktu di backend dan scheduler laundry:sync-statuses.
 - Dashboard Owner/Kasir, laporan pembayaran bertanggal, ekspor CSV, filter akun termasuk Me.
@@ -70,13 +76,22 @@ Scheduler terdaftar setiap menit di routes/console.php. Hosting perlu memanggil 
 
 | Pemeriksaan | Hasil |
 | --- | --- |
-| PHPUnit backend + regresi baru | **87 lulus**, 621 assertions, SQLite di memori; termasuk multi-layanan, DP/pengambilan bertahap dan migrasi legacy |
+| PHPUnit backend + regresi baru | **95 lulus**, 707 assertions, SQLite di memori; termasuk 8 tes tujuan pembayaran (86 assertions), enkripsi, QRIS privat, isolasi Owner, rollback dan retry |
 | Tes audit tambahan dengan token login asli | **13/13 lulus**, 105 assertions; sebelumnya 9 kasus gagal |
-| Flutter unit/widget | **97 lulus**, termasuk 29 regresi Back/popup/scanner/penyimpanan tertunda, pilihan saat API lambat, urutan A–Z, cache antar-sesi, pembayaran, bon, login dan WIB |
-| Analisis Dart | Pemeriksaan menyeluruh sebelumnya: 0 error, 12 warning lama. 13 file perubahan navigasi/form dan tes diperiksa 11 Oktober: 0 error/warning, 343 lint/hint informasi |
+| Regresi Laravel pembayaran, pengambilan bertahap dan isolasi owner (11 Oktober) | **3 lulus**, 35 assertions, SQLite di memori; endpoint tetap memakai validasi backend yang ada |
+| Flutter unit/widget | **138 lulus**; mencakup pilihan rekening/QRIS, kegagalan/retry, foto detail, refresh lifecycle, payload ketiga alur pembayaran serta regresi navigasi/nominal/bon/auth yang sudah ada |
+| Analisis Dart lib + test | **0 error, 11 warning, 1016 lint/hint informasi**; warning tersisa pada model auth dan dashboard Owner lama, bukan deklarasi tujuan pembayaran baru |
 | Composer audit lockfile (runtime dan seluruh paket) | **0 advisori**, setelah upgrade terarah tiga paket |
 
 Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan data sintetis. Belum ada pengujian end-to-end Flutter → server hosting nyata atau seluruh perangkat.
+
+Nominal otomatis diuji dengan simulasi ketikan IME, perubahan tagihan, pengambilan sebagian/terakhir/sudah lunas, batas nominal dan retry pembayaran. Perilaku keyboard fisik Android/iOS belum diverifikasi. Tahap autofill tidak mengubah database Laragon; tahap tujuan pembayaran menambahkan skema sebagaimana dijelaskan berikut. Tidak menjalankan build Android/Gradle atau mengunduh dependensi.
+
+Tahap tujuan pembayaran menerapkan hanya migrasi tambahan `2026_10_11_000007_add_owner_payment_destinations.php` di Laragon lokal. Jumlah baris dan checksum seluruh kolom lama pada tujuh tabel dibandingkan sebelum/sesudah dan tetap sama; tidak reset/seed, menghapus data atau mengubah kredensial. Tidak menambahkan rekening nyata pada database untuk pengujian. PHPUnit tetap memakai SQLite di memori.
+
+Enkripsi rekening adalah perlindungan penyimpanan, bukan pengganti HTTPS/otorisasi. `APP_KEY` harus privat dan dibackup aman; jangan menggantinya sembarangan karena rekening lama bisa tidak dapat didekripsi. Backup konfigurasi usaha yang sudah ada belum mencakup tujuan pembayaran/QRIS: siapkan backup database, file privat dan kunci secara terpisah. QRIS/transfer masih diverifikasi dan dicatat manual, bukan integrasi gateway konfirmasi otomatis.
+
+Tes kembali/refresh mencakup Owner/Kasir, pembayaran penuh/sebagian, pengambilan lunas/sebagian, API gagal, Back/pembatalan modal, pencarian yang dipertahankan, daftar kosong/pendek/error dan respons pagination terlambat. Masuk dari detail transaksi atau rute QR juga tidak menyisakan layar penyelesaian di riwayat Back. Laravel/database tidak diubah pada tahap navigasi ini; verifikasi baru menggunakan repository tiruan, bukan server/perangkat nyata.
 
 ## Penanganan audit dan pekerjaan tersisa
 
@@ -133,6 +148,7 @@ composer audit --locked --no-dev --format=json
 - [Audit integrasi dan keamanan](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md).
 - [Penanganan prioritas dan hasil regresi](docs/PERBAIKAN_PRIORITAS_2026-10-10.md).
 - [WIB/UTC, bukti privat, upgrade dan langkah deployment](docs/TIMEZONE_BUKTI_DEPENDENSI_2026-10-10.md).
+- [Tujuan pembayaran, bukti detail dan refresh navigasi](docs/TUJUAN_PEMBAYARAN_REFRESH_2026-10-11.md).
 - Backend_Needed.md: catatan historis kebutuhan; verifikasi terhadap kode/dokumen terbaru sebelum mengikutinya.
 
 .gitignore diperluas pada kedua repositori untuk varian .env, kunci privat/signing, konfigurasi HTTP privat, cache/log dan backup lokal. Lockfile dependensi, source, migrasi, aset aplikasi dan tes tetap disimpan di Git. Ignore tidak menghapus file yang telanjur tracked.

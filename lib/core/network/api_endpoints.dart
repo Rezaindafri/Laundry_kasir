@@ -48,6 +48,9 @@ abstract class ApiEndpoints {
 
   // Settings
   static const String settings = '/settings';
+  static const String paymentDestinations = '/settings/payment-destinations';
+  static String paymentDestination(int id) => '$paymentDestinations/$id';
+  static String paymentDestinationImage(int id) => '$paymentDestinations/$id/image';
   static const String backup = '/settings/backup';
   static const String restore = '/settings/restore';
   static const String systemSettings = '/system-settings';

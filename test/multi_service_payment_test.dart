@@ -139,6 +139,12 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.text(collection ? 'Bayar & Ambil' : 'Bayar Saja'));
       await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<TextFormField>(find.byType(TextFormField).first)
+              .controller!
+              .text,
+          collection ? '10000' : '60000');
       await tester.enterText(find.byType(TextFormField).first, '10000');
       await tester.enterText(
           find.byType(TextFormField).last, 'Fixture catatan');
@@ -148,7 +154,8 @@ void main() {
       expect(repository.receivedAmount, 10000);
       expect(repository.receivedNote, 'Fixture catatan');
       expect(repository.pickedIds, collection ? ['11'] : null);
-      expect(find.byType(CollectionSettlementScreen), findsOneWidget);
+      expect(find.byType(CollectionSettlementScreen), findsNothing);
+      expect(find.text('Pengambilan'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
@@ -265,6 +272,67 @@ void main() {
     dio.close(force: true);
   });
 
+  test('destination ID reaches Laravel for creation, payment and collection',
+      () async {
+    final adapter = _FixtureAdapter();
+    final dio = Dio(BaseOptions(baseUrl: 'https://fixture.invalid/api'))
+      ..httpClientAdapter = adapter;
+    final source = TransactionRemoteDataSourceImpl(dio);
+    final repository = TransactionRepositoryImpl(remoteDataSource: source);
+    final order = TransactionModel.fromJson(_payload()).toEntity().copyWith(
+        paymentMethod: PaymentMethod.transfer, paymentDestinationId: 42);
+    expect((await repository.create(order)).isSuccess, isTrue);
+    expect((adapter.requests.last.data as Map)['payment_destination_id'], 42);
+    expect(
+        (await repository.pay(
+                transaction: order,
+                amount: 10000,
+                method: PaymentMethod.transfer,
+                requestId: 'fixture-request'))
+            .isSuccess,
+        isTrue);
+    expect((adapter.requests.last.data as Map)['payment_destination_id'], 42);
+    expect(
+        (await repository.collect(
+                transaction: order,
+                settlePayment: false,
+                detailIds: ['11'],
+                paymentAmount: 10000))
+            .isSuccess,
+        isTrue);
+    expect(
+        Map<String, String>.fromEntries((adapter.requests.last.data as FormData)
+            .fields)['payment_destination_id'],
+        '42');
+    dio.close(force: true);
+  });
+
+  test('detail maps recorded payments without inventing missing legacy fields',
+      () {
+    final order = TransactionModel.fromJson({
+      ..._payload(),
+      'payments': [
+        {
+          'amount': '10000.00',
+          'payment_method': 'transfer',
+          'paid_at': '2026-10-11T07:00:00Z',
+          'payment_destination_label': 'Usaha - Bank A',
+          'recorder': {'name': 'Kasir A'},
+          'notes': 'DP'
+        },
+        {'amount': 20000, 'payment_method': 'cash'},
+      ]
+    }).toEntity();
+    expect(order.payments.first.amount, 10000);
+    expect(order.payments.first.destinationLabel, 'Usaha - Bank A');
+    expect(order.payments.first.recorderName, 'Kasir A');
+    expect(order.payments.first.paidAt, DateTime.utc(2026, 10, 11, 7));
+    expect(order.payments.last.destinationLabel, isNull);
+    expect(order.payments.last.recorderName, isNull);
+    expect(order.payments.last.paidAt, isNull);
+    expect(order.copyWith(notes: 'updated').payments, order.payments);
+  });
+
   testWidgets('only ready services selectable and layout fits small phone',
       (tester) async {
     tester.view.physicalSize = const Size(320, 700);
@@ -316,7 +384,7 @@ void main() {
             .widget<TextFormField>(find.byType(TextFormField).first)
             .controller
             ?.text,
-        isEmpty);
+        '60000');
     await tester.enterText(find.byType(TextFormField).first, '10000');
     await tester.enterText(find.byType(TextFormField).last, 'Setengah dulu');
     await tester.tap(find.text('Catat Pembayaran'));

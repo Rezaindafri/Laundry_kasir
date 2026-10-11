@@ -16,6 +16,7 @@ class TransactionModel {
   final double total;
   final double paidAmount;
   final String paymentMethod;
+  final int? paymentDestinationId;
   final String paymentStatus;
   final String laundryStatus;
   final String? notes;
@@ -23,6 +24,7 @@ class TransactionModel {
   final DateTime? estimatedFinishAt;
   final List<TransactionDetailModel> details;
   final bool hasProofImage;
+  final List<TransactionPaymentRecord> payments;
 
   const TransactionModel({
     required this.id,
@@ -39,6 +41,7 @@ class TransactionModel {
     required this.total,
     required this.paidAmount,
     required this.paymentMethod,
+    this.paymentDestinationId,
     required this.paymentStatus,
     required this.laundryStatus,
     this.notes,
@@ -46,6 +49,7 @@ class TransactionModel {
     this.estimatedFinishAt,
     required this.details,
     this.hasProofImage = false,
+    this.payments = const [],
   });
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) {
@@ -122,6 +126,8 @@ class TransactionModel {
       createdAt: createdAt,
       estimatedFinishAt: estimatedFinishAt,
       details: details,
+      payments: (json['payments'] is List ? json['payments'] as List : const [])
+          .whereType<Map<String, dynamic>>().map(TransactionPaymentRecord.fromJson).toList(),
       hasProofImage: json['has_proof_image'] == true ||
           (json['has_proof_image'] == null &&
               (json['proof_image_path']?.toString().isNotEmpty ?? false)),
@@ -158,6 +164,7 @@ class TransactionModel {
         estimatedFinishAt: estimatedFinishAt ?? createdAt,
         notes: notes,
         hasProofImage: hasProofImage,
+        payments: payments,
         hasEstimatedFinish: estimatedFinishAt != null,
         details: details.map((line) => line.toEntity()).toList(),
       );
@@ -168,6 +175,7 @@ class TransactionModel {
         'customer_id': customerId,
         'payment_status': paymentStatus,
         'payment_method': paymentMethod,
+        if (paymentDestinationId != null) 'payment_destination_id': paymentDestinationId,
         'paid_amount': paidAmount,
         'estimated_finish_at': estimatedFinishAt?.toUtc().toIso8601String(),
         'notes': notes,

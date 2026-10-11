@@ -4,13 +4,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/widgets/navigation_write_guard.dart';
 import '../../../../core/widgets/safe_modal_sheet.dart';
+import '../../../../core/widgets/page_visibility_refresh.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:screenshot/screenshot.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/utils/business_time.dart';
 import '../../../../core/utils/name_sort.dart';
@@ -26,12 +29,15 @@ import '../../../printing/presentation/providers/printing_providers.dart';
 import '../../../printing/domain/entities/printer_device.dart';
 import '../../../settings/domain/entities/laundry_settings.dart';
 import '../../../settings/presentation/providers/settings_providers.dart';
+import '../../../settings/presentation/providers/payment_destination_providers.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../../domain/entities/transaction_page_entity.dart';
 import '../providers/transaction_providers.dart';
-import '../widgets/transaction_proof_dialog.dart';
+import '../widgets/transaction_evidence_section.dart';
 import '../widgets/transaction_service_lines.dart';
 import '../widgets/payment_entry_sheet.dart';
+import '../widgets/payment_amount_field.dart';
+import '../widgets/payment_destination_picker.dart';
 import '../../../../core/utils/whatsapp_launcher.dart';
 import '../../../../core/utils/whatsapp_receipt_launcher.dart';
 
@@ -98,6 +104,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   Timer? _searchDebounce;
   AsyncValue<TransactionPageEntity> _pageState = const AsyncLoading();
   bool _loadingMore = false;
+  int _queryVersion = 0;
+  int? _coveredQueryVersion;
 
   @override
   void initState() {
@@ -168,12 +176,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 
   Future<void> _loadFirstPage() async {
-    if (mounted) setState(() => _pageState = const AsyncLoading());
+    if (!mounted) return;
+    _searchDebounce?.cancel();
+    final version = ++_queryVersion;
+    setState(() {
+      _pageState = const AsyncLoading();
+      _loadingMore = false;
+    });
     final result =
         await ref.read(transactionRepositoryProvider).getTransactionsPage(
               _queryForPage(1),
             );
-    if (!mounted) return;
+    if (!mounted || version != _queryVersion) return;
     setState(() => _pageState = result.when(
           success: AsyncData.new,
           error: (failure) => AsyncError(failure, StackTrace.current),
@@ -183,12 +197,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   Future<void> _loadMore() async {
     final page = _pageState.valueOrNull;
     if (_loadingMore || page == null || !page.hasMore) return;
+    final version = _queryVersion;
     setState(() => _loadingMore = true);
     final result =
         await ref.read(transactionRepositoryProvider).getTransactionsPage(
               _queryForPage(page.currentPage + 1),
             );
-    if (!mounted) return;
+    if (!mounted || version != _queryVersion) return;
     result.when(
       success: (next) => setState(() {
         _pageState = AsyncData(TransactionPageEntity(
@@ -209,6 +224,24 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       _loadMore();
     }
   }
+
+  Widget _refreshableNotice(Widget child) => RefreshIndicator(
+        onRefresh: _loadFirstPage,
+        child: LayoutBuilder(
+          builder: (_, constraints) => ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            children: [
+              SizedBox(
+                height: constraints.maxHeight,
+                child: Center(
+                    child: Padding(
+                        padding: const EdgeInsets.all(24), child: child)),
+              ),
+            ],
+          ),
+        ),
+      );
 
   Future<void> _openFilterSheet(
     List<TransactionListFilter> availableFilters,
@@ -246,6 +279,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   Widget build(BuildContext context) {
     final transactions = _pageState;
     final user = ref.watch(sessionProvider).valueOrNull;
+    ref.listen(transactionListRefreshProvider, (_, __) => _loadFirstPage());
     final availableFilters = TransactionListFilter.values
         .where(
           (filter) =>
@@ -254,7 +288,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   filter != TransactionListFilter.notCollected),
         )
         .toList();
-    return Scaffold(
+    return PageVisibilityRefresh(
+      onCovered: () => _coveredQueryVersion = _queryVersion,
+      onVisible: () async {
+        // An awaited card result or successful payment may already have reloaded
+        // this query before the page becomes visible. Do not request it twice.
+        if (_coveredQueryVersion == _queryVersion) await _loadFirstPage();
+      },
+      child: Scaffold(
       drawer: widget.isCollectionMode || user == null
           ? null
           : AppNavigationDrawer(user: user),
@@ -277,8 +318,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             ),
       body: transactions.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            Center(child: Text('Transaksi gagal dimuat: $error')),
+        error: (error, _) => _refreshableNotice(Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Transaksi gagal dimuat: $error', textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            OutlinedButton(onPressed: _loadFirstPage, child: const Text('Coba lagi')),
+          ],
+        )),
         data: (page) {
           final items = page.items;
           return Column(
@@ -336,20 +383,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               ),
               Expanded(
                 child: items.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            'Tidak ada transaksi untuk filter yang dipilih.',
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      )
+                    ? _refreshableNotice(const Text(
+                        'Tidak ada transaksi untuk filter yang dipilih.',
+                        textAlign: TextAlign.center,
+                      ))
                     : RefreshIndicator(
-                        onRefresh: () async {
-                          await _loadFirstPage();
-                        },
+                        onRefresh: _loadFirstPage,
                         child: ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.all(16),
                           controller: _scrollController,
                           itemCount: items.length + (page.hasMore ? 1 : 0),
@@ -357,15 +398,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               const SizedBox(height: 10),
                           itemBuilder: (_, index) {
                             if (index == items.length) {
-                              return const Padding(
-                                padding: EdgeInsets.all(16),
-                                child:
-                                    Center(child: CircularProgressIndicator()),
+                              return Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Center(child: _loadingMore
+                                    ? const CircularProgressIndicator()
+                                    : TextButton(onPressed: _loadMore,
+                                        child: const Text('Muat transaksi lainnya'))),
                               );
                             }
                             return _TransactionCard(
                               transaction: items[index],
                               isCollectionMode: widget.isCollectionMode,
+                              onReturn: _loadFirstPage,
                             );
                           },
                         ),
@@ -375,7 +419,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           );
         },
       ),
-    );
+    ));
   }
 }
 
@@ -567,22 +611,28 @@ class _TransactionFilterSheetState extends State<_TransactionFilterSheet> {
 class _TransactionCard extends ConsumerWidget {
   final TransactionEntity transaction;
   final bool isCollectionMode;
+  final Future<void> Function() onReturn;
 
   const _TransactionCard({
     required this.transaction,
+    required this.onReturn,
     this.isCollectionMode = false,
   });
   @override
   Widget build(BuildContext context, WidgetRef ref) => Card(
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => isCollectionMode
-                  ? CollectionSettlementScreen(transaction: transaction)
-                  : TransactionDetailScreen(transaction: transaction),
-            ),
-          ),
+          onTap: () async {
+            final refreshed = await Navigator.of(context).push<bool>(
+              MaterialPageRoute<bool>(
+                builder: (_) => isCollectionMode
+                    ? CollectionSettlementScreen(
+                        transaction: transaction, returnToCollectionList: true)
+                    : TransactionDetailScreen(transaction: transaction),
+              ),
+            );
+            if (context.mounted && refreshed != true) await onReturn();
+          },
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -707,26 +757,29 @@ class NewTransactionScreen extends ConsumerStatefulWidget {
 class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
   final _formKey = GlobalKey<FormState>();
   final _notes = TextEditingController();
-  final _deposit = TextEditingController();
+  final _initialPayment = PaymentAmountController(defaultAmount: 0);
   final _lines = <_ServiceDraft>[_ServiceDraft(initialQuantity: '')];
   final _retired = <_ServiceDraft>[];
   CustomerEntity? _customer;
   PaymentMethod _paymentMethod = PaymentMethod.cash;
+  int? _paymentDestinationId;
   PaymentStatus _paymentStatus = PaymentStatus.unpaid;
   bool _express = false;
   bool _saving = false;
   bool _customerFormOpen = false;
+  late final bool _catalogCached;
 
   @override
   void initState() {
     super.initState();
     _customer = widget.initialCustomer;
+    _catalogCached = ref.exists(customersProvider) || ref.exists(laundryServicesProvider);
   }
 
   @override
   void dispose() {
     _notes.dispose();
-    _deposit.dispose();
+    _initialPayment.dispose();
     for (final line in [..._lines, ..._retired]) {
       line.quantity.dispose();
     }
@@ -737,6 +790,44 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
   int get _expressFee => _express
       ? _lines.fold(0, (sum, line) => sum + (line.subtotal * .25).round())
       : 0;
+
+  int get _total => _subtotal + _expressFee;
+
+  Future<void> _refreshCatalog() async {
+    if (_saving) return;
+    ref.invalidate(paymentDestinationsProvider);
+    await Future.wait([
+      if (!ref.read(customersProvider).isLoading) ref.read(customersProvider.notifier).refresh(),
+      if (!ref.read(laundryServicesProvider).isLoading) ref.read(laundryServicesProvider.notifier).refresh(),
+    ]);
+  }
+
+  void _updateBill(VoidCallback change) => setState(() {
+        change();
+        _initialPayment.updateDefaultAmount(_total);
+        _syncPaymentStatus();
+      });
+
+  void _syncPaymentStatus() {
+    if (_paymentStatus == PaymentStatus.unpaid) return;
+    final amount = int.tryParse(_initialPayment.text);
+    if (amount != null && amount > 0 && amount <= _total) {
+      _paymentStatus = amount == _total
+          ? PaymentStatus.paid
+          : PaymentStatus.downPayment;
+    }
+  }
+
+  void _choosePaymentStatus(PaymentStatus status) => setState(() {
+        _paymentStatus = status;
+        if (status == PaymentStatus.paid) {
+          // Choosing Lunas explicitly restores the current full bill.
+          _initialPayment.resetToDefault(_total);
+        } else if (status == PaymentStatus.downPayment) {
+          _initialPayment.updateDefaultAmount(_total);
+        }
+        _syncPaymentStatus();
+      });
 
   void _sortServiceLines() {
     final selected = sortedByName(_lines.where((line) => line.service != null),
@@ -768,7 +859,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
                               ? null
                               : () {
                                   FocusScope.of(context).unfocus();
-                                  setState(() {
+                                  _updateBill(() {
                                     _lines.remove(line);
                                     _retired.add(line);
                                   });
@@ -795,7 +886,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
                                       !mounted ||
                                       !_lines.contains(line)) return;
                                   if (field.mounted) field.didChange(selected);
-                                  setState(() {
+                                  _updateBill(() {
                                     line.service = selected;
                                     _sortServiceLines();
                                   });
@@ -838,7 +929,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
                                   : 'Jumlah (${line.service!.unit})'),
                       validator: (value) =>
                           Validators.positiveNumber(value, field: 'Jumlah'),
-                      onChanged: (_) => setState(() {})),
+                      onChanged: (_) => _updateBill(() {})),
                   if (line.service != null) ...[
                     const SizedBox(height: 8),
                     Align(
@@ -994,15 +1085,18 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
     }
     // Validate controller values too: rows scrolled out of a lazy ListView
     // may not have an active FormField when the fixed Save button is pressed.
-    if (_paymentStatus == PaymentStatus.downPayment &&
-        _validateDeposit(_deposit.text) != null) {
+    if (_paymentStatus != PaymentStatus.unpaid &&
+        _validateInitialPayment(_initialPayment.text) != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_validateDeposit(_deposit.text)!)));
+          SnackBar(content: Text(_validateInitialPayment(_initialPayment.text)!)));
       return;
     }
     setState(() => _saving = true);
     final now = DateTime.now();
-    final total = _subtotal + _expressFee;
+    final total = _total;
+    final paidAmount = _paymentStatus == PaymentStatus.unpaid
+        ? 0
+        : int.parse(_initialPayment.text);
     final drafts = _lines
         .map((line) => (
               line.service!,
@@ -1046,13 +1140,14 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
       unitPrice: first.$1.price.round(),
       expressFee: _expressFee,
       total: total,
-      paidAmount: _paymentStatus == PaymentStatus.paid
-          ? total
-          : _paymentStatus == PaymentStatus.downPayment
-              ? int.parse(_deposit.text.trim())
-              : 0,
+      paidAmount: paidAmount,
       paymentMethod: _paymentMethod,
-      paymentStatus: _paymentStatus,
+      paymentDestinationId: paidAmount > 0 ? _paymentDestinationId : null,
+      paymentStatus: paidAmount >= total
+          ? PaymentStatus.paid
+          : paidAmount > 0
+              ? PaymentStatus.downPayment
+              : PaymentStatus.unpaid,
       laundryStatus: LaundryStatus.received,
       createdAt: now,
       estimatedFinishAt: deadlines.isEmpty ? now : deadlines.last,
@@ -1082,10 +1177,10 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
     );
   }
 
-  String? _validateDeposit(String? value) {
+  String? _validateInitialPayment(String? value) {
     final amount = int.tryParse(value?.trim() ?? '');
-    return amount == null || amount <= 0 || amount >= _subtotal + _expressFee
-        ? 'DP harus lebih dari 0 dan kurang dari total tagihan.'
+    return amount == null || amount <= 0 || amount > _total
+        ? 'Pembayaran harus lebih dari 0 dan tidak melebihi total tagihan.'
         : null;
   }
 
@@ -1095,7 +1190,8 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
     // states independently, so opening one early cannot freeze an empty list.
     ref.watch(customersProvider);
     ref.watch(laundryServicesProvider);
-    return NavigationWriteGuard(
+    return PageVisibilityRefresh(refreshOnMount: _catalogCached,
+        onVisible: _refreshCatalog, child: NavigationWriteGuard(
         child: Scaffold(
       appBar: AppBar(title: const Text('Transaksi Baru')),
       body: Form(
@@ -1161,7 +1257,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
               subtitle: const Text(
                   'Tambahan biaya 25% untuk tiap layanan pada bon ini'),
               onChanged:
-                  _saving ? null : (value) => setState(() => _express = value),
+                  _saving ? null : (value) => _updateBill(() => _express = value),
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -1187,10 +1283,14 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
                     ),
                   )
                   .toList(),
-              onChanged: (value) => setState(() => _paymentMethod = value!),
+              onChanged: (value) => setState(() {
+                _paymentMethod = value!;
+                _paymentDestinationId = null;
+              }),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<PaymentStatus>(
+              key: ValueKey(_paymentStatus),
               initialValue: _paymentStatus,
               decoration: const InputDecoration(labelText: 'Status pembayaran'),
               items: PaymentStatus.values
@@ -1201,16 +1301,18 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
                     ),
                   )
                   .toList(),
-              onChanged: (value) => setState(() => _paymentStatus = value!),
+              onChanged: (value) => _choosePaymentStatus(value!),
             ),
-            if (_paymentStatus == PaymentStatus.downPayment) ...[
+            if (_paymentStatus != PaymentStatus.unpaid) ...[
+              PaymentDestinationPicker(method: _paymentMethod, value: _paymentDestinationId,
+                  onChanged: (id) => setState(() => _paymentDestinationId = id)),
               const SizedBox(height: 12),
-              TextFormField(
-                  controller: _deposit,
-                  keyboardType: TextInputType.number,
-                  decoration:
-                      const InputDecoration(labelText: 'Nominal DP (Rp)'),
-                  validator: _validateDeposit),
+              PaymentAmountField(
+                  controller: _initialPayment,
+                  helperText:
+                      'Terisi sesuai total tagihan. Ketik untuk mengganti; pembayaran sebagian dicatat sebagai DP.',
+                  validator: _validateInitialPayment,
+                  onChanged: (_) => setState(_syncPaymentStatus)),
             ],
             const SizedBox(height: 16),
             Card(
@@ -1254,7 +1356,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
           ),
         ),
       ),
-    ));
+    )));
   }
 }
 
@@ -1301,16 +1403,22 @@ class TransactionDetailScreen extends ConsumerStatefulWidget {
 class _TransactionDetailScreenState
     extends ConsumerState<TransactionDetailScreen> {
   late TransactionEntity _transaction;
+  late final bool _detailCached;
 
   @override
   void initState() {
     super.initState();
     _transaction = widget.transaction;
+    _detailCached = ref.exists(transactionDetailProvider(widget.transaction.id));
   }
 
   @override
   Widget build(BuildContext context) {
     final currentRole = ref.watch(sessionProvider).valueOrNull?.role;
+    final fresh = ref.watch(transactionDetailProvider(widget.transaction.id));
+    ref.listen(transactionDetailProvider(widget.transaction.id), (_, next) {
+      if (next.hasValue && mounted) setState(() => _transaction = next.requireValue);
+    });
     final canDelete = currentRole == UserRole.owner &&
         _transaction.laundryStatus != LaundryStatus.collected &&
         _transaction.paidAmount == 0 &&
@@ -1321,7 +1429,12 @@ class _TransactionDetailScreenState
       if (matches != null && matches.isNotEmpty && mounted)
         setState(() => _transaction = matches.first);
     });
-    return NavigationWriteGuard(
+    return PageVisibilityRefresh(refreshOnMount: _detailCached, onVisible: () async {
+      ref.invalidate(transactionProofProvider(_transaction.id));
+      ref.invalidate(transactionLineProofProvider);
+      ref.invalidate(transactionDetailProvider(_transaction.id));
+      await ref.read(transactionDetailProvider(_transaction.id).future);
+    }, child: NavigationWriteGuard(
         child: Scaffold(
       floatingActionButton: _PrintReceiptButton(transaction: _transaction),
       appBar: AppBar(
@@ -1391,6 +1504,10 @@ class _TransactionDetailScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (fresh.isLoading) const LinearProgressIndicator(),
+          if (fresh.hasError) ListTile(title: const Text('Detail terbaru belum dapat dimuat.'),
+              trailing: TextButton(onPressed: () => ref.invalidate(transactionDetailProvider(_transaction.id)),
+                  child: const Text('Coba lagi'))),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -1490,18 +1607,10 @@ class _TransactionDetailScreenState
             ),
           ),
           const SizedBox(height: 16),
-          if (_transaction.hasProofImage) ...[
-            OutlinedButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) =>
-                    TransactionProofDialog(transactionId: _transaction.id),
-              ),
-              icon: const Icon(Icons.image_outlined),
-              label: const Text('Lihat bukti pengambilan'),
-            ),
-            const SizedBox(height: 12),
-          ],
+          TransactionEvidenceSection(transaction: _transaction),
+          const SizedBox(height: 12),
+          TransactionPaymentHistory(transaction: _transaction),
+          const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: _transaction.customerPhone.isNotEmpty
                 ? () async {
@@ -1540,14 +1649,19 @@ class _TransactionDetailScreenState
           ),
         ],
       ),
-    ));
+    )));
   }
 }
 
 class CollectionSettlementScreen extends ConsumerStatefulWidget {
   final TransactionEntity transaction;
+  final bool returnToCollectionList;
 
-  const CollectionSettlementScreen({required this.transaction, super.key});
+  const CollectionSettlementScreen({
+    required this.transaction,
+    this.returnToCollectionList = false,
+    super.key,
+  });
 
   @override
   ConsumerState<CollectionSettlementScreen> createState() =>
@@ -1563,6 +1677,46 @@ class _CollectionSettlementScreenState
 
   final _selectedIds = <String>{};
   PaymentEntry? _failedPayment;
+
+  void _returnToCollectionSearch(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    ref.read(transactionListRefreshProvider.notifier).state++;
+    ref.invalidate(transactionDetailProvider(_transaction.id));
+    if (widget.returnToCollectionList) {
+      // Reuse the existing search page and its filters. The revision reloads
+      // its Laravel query; true prevents the card from issuing a second load.
+      navigator.pop(true);
+    } else {
+      final router = GoRouter.maybeOf(context);
+      if (router == null) {
+        navigator.pushReplacement(MaterialPageRoute<void>(
+            settings: const RouteSettings(name: AppRoutes.collections),
+            builder: (_) => const TransactionsScreen(isCollectionMode: true)));
+      } else {
+        Route<dynamic>? destination;
+        // Drop temporary detail/settlement pages without discarding the tab
+        // that opened them. QR/direct entry may have no search page yet.
+        navigator.popUntil((route) {
+          destination = route;
+          return route.settings.name == AppRoutes.collections ||
+              route.isFirst ||
+              (route.settings is Page<dynamic> &&
+                  route.settings.name != AppRoutes.collectionSettlement);
+        });
+        if (destination?.settings.name != AppRoutes.collections) {
+          if (destination?.settings.name == AppRoutes.collectionSettlement) {
+            unawaited(router.pushReplacement<void>(AppRoutes.collections));
+          } else {
+            unawaited(router.push<void>(AppRoutes.collections));
+          }
+        }
+      }
+    }
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   void initState() {
@@ -1590,13 +1744,12 @@ class _CollectionSettlementScreenState
     if (_saving) return;
     final result = await ref
         .read(transactionRepositoryProvider)
-        .getTransactionsPage({'invoice': _transaction.invoice, 'per_page': 1});
+        .getById(_transaction.id);
     if (!mounted) return;
     result.when(
-        success: (page) {
-          if (page.items.isEmpty) return;
+        success: (current) {
           setState(() {
-            _transaction = page.items.first;
+            _transaction = current;
             final ready = _transaction.serviceLines
                 .where((line) => line.isReady)
                 .map((line) => line.id)
@@ -1632,7 +1785,8 @@ class _CollectionSettlementScreenState
     final result = await withNavigationWriteLock(
         ref,
         () => ref.read(transactionsProvider.notifier).collectTransaction(
-              transaction: _transaction.copyWith(paymentMethod: entry.method),
+              transaction: _transaction.copyWith(paymentMethod: entry.method,
+                  paymentDestinationId: entry.destinationId),
               settlePayment: false,
               proofImage: _proofImage,
               detailIds: _transaction.details.isEmpty
@@ -1645,19 +1799,9 @@ class _CollectionSettlementScreenState
     setState(() => _saving = false);
     result.when(
       success: (updated) {
-        setState(() {
-          _transaction = updated;
-          _selectedIds.clear();
-          _selectedIds.addAll(updated.serviceLines
-              .where((line) => line.isReady)
-              .map((line) => line.id));
-          _proofImage = null;
-          _failedPayment = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(updated.laundryStatus == LaundryStatus.collected
-                ? 'Seluruh layanan berhasil diambil.'
-                : 'Layanan terpilih berhasil diambil. Layanan lainnya tetap pada transaksi ini.')));
+        _returnToCollectionSearch(updated.laundryStatus == LaundryStatus.collected
+            ? 'Seluruh layanan berhasil diambil.'
+            : 'Layanan terpilih berhasil diambil. Layanan lainnya tetap pada transaksi ini.');
       },
       error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(failure.message)),
@@ -1683,7 +1827,7 @@ class _CollectionSettlementScreenState
     final result = await withNavigationWriteLock(
         ref,
         () => ref.read(transactionsProvider.notifier).pay(
-            transaction: _transaction,
+            transaction: _transaction.copyWith(paymentDestinationId: entry.destinationId),
             amount: entry.amount,
             method: entry.method,
             note: entry.note,
@@ -1692,16 +1836,8 @@ class _CollectionSettlementScreenState
     setState(() => _saving = false);
     result.when(
       success: (updated) {
-        setState(() {
-          _transaction = updated;
-          _failedPayment = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Pembayaran berhasil dicatat. Barang tidak otomatis diambil.'),
-          ),
-        );
+        _returnToCollectionSearch(
+            'Pembayaran berhasil dicatat. Barang tidak otomatis diambil.');
       },
       error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(failure.message)),
@@ -1717,7 +1853,7 @@ class _CollectionSettlementScreenState
     final isCollected = transaction.laundryStatus == LaundryStatus.collected;
     final canCollect = transaction.hasReadyItems;
 
-    return NavigationWriteGuard(
+    return PageVisibilityRefresh(onVisible: _refreshTransaction, child: NavigationWriteGuard(
         child: Scaffold(
       appBar: AppBar(title: const Text('Pengambilan / Pembayaran')),
       bottomNavigationBar: SafeArea(
@@ -1888,7 +2024,7 @@ class _CollectionSettlementScreenState
               ],
             ],
           )),
-    ));
+    )));
   }
 }
 

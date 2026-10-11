@@ -13,6 +13,17 @@ import 'dart:typed_data';
 class TransactionRepositoryImpl implements TransactionRepository {
   final TransactionRemoteDataSource remoteDataSource;
 
+  @override
+  Future<Result<TransactionEntity>> getById(String id) async {
+    try {
+      return Success((await remoteDataSource.getTransaction(id)).toEntity());
+    } on ServerException catch (error) {
+      return Error(ServerFailure(error.message));
+    } catch (_) {
+      return const Error(UnknownFailure());
+    }
+  }
+
   const TransactionRepositoryImpl({required this.remoteDataSource});
 
   @override
@@ -83,6 +94,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
           id: transaction.id,
           amount: amount,
           method: method.name,
+          destinationId: transaction.paymentDestinationId,
           note: note,
           requestId: requestId);
       return Success(updated.toEntity());
@@ -146,6 +158,8 @@ class TransactionRepositoryImpl implements TransactionRepository {
         total: transaction.total.toDouble(),
         paidAmount: transaction.paidAmount.toDouble(),
         paymentMethod: transaction.paymentMethod.name,
+        paymentDestinationId: transaction.paymentDestinationId,
+        payments: transaction.payments,
         paymentStatus: transaction.paymentStatus.name,
         laundryStatus: transaction.laundryStatus.name,
         createdAt: transaction.createdAt,

@@ -31,6 +31,17 @@ final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
     remoteDataSource: ref.watch(transactionRemoteDataSourceProvider),
   );
 });
+
+/// Paginated screens own their query/filter state, separate from the all-items
+/// cache. A successful payment/handover must also reload those live queries.
+final transactionListRefreshProvider = StateProvider<int>((ref) => 0);
+
+final transactionDetailProvider = FutureProvider.autoDispose.family<TransactionEntity, String>((ref, id) async {
+  ref.watch(currentSessionUserIdProvider);
+  final result = await ref.watch(transactionRepositoryProvider).getById(id);
+  return result.when(success: (value) => value, error: (failure) => throw failure);
+});
+
 final transactionLineProofProvider =
     FutureProvider.autoDispose.family<Uint8List, (String, String)>((ref, key) {
   ref.watch(currentSessionUserIdProvider);

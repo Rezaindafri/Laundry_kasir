@@ -57,6 +57,9 @@ class TransactionEntity extends Equatable {
   final int total;
   final int paidAmount;
   final PaymentMethod paymentMethod;
+
+  /// Destination selected for the next payment request, not a plaintext account.
+  final int? paymentDestinationId;
   final PaymentStatus paymentStatus;
   final LaundryStatus laundryStatus;
   final DateTime createdAt;
@@ -65,6 +68,7 @@ class TransactionEntity extends Equatable {
   final bool hasProofImage;
   final bool hasEstimatedFinish;
   final List<TransactionLineEntity> details;
+  final List<TransactionPaymentRecord> payments;
 
   const TransactionEntity({
     required this.id,
@@ -81,6 +85,7 @@ class TransactionEntity extends Equatable {
     required this.total,
     required this.paidAmount,
     required this.paymentMethod,
+    this.paymentDestinationId,
     required this.paymentStatus,
     required this.laundryStatus,
     required this.createdAt,
@@ -89,6 +94,7 @@ class TransactionEntity extends Equatable {
     this.hasProofImage = false,
     this.hasEstimatedFinish = true,
     this.details = const [],
+    this.payments = const [],
   });
 
   int get remainingPayment => total - paidAmount;
@@ -135,6 +141,7 @@ class TransactionEntity extends Equatable {
   TransactionEntity copyWith({
     int? paidAmount,
     PaymentMethod? paymentMethod,
+    int? paymentDestinationId,
     PaymentStatus? paymentStatus,
     LaundryStatus? laundryStatus,
     String? notes,
@@ -155,6 +162,7 @@ class TransactionEntity extends Equatable {
         total: total,
         paidAmount: paidAmount ?? this.paidAmount,
         paymentMethod: paymentMethod ?? this.paymentMethod,
+        paymentDestinationId: paymentDestinationId ?? this.paymentDestinationId,
         paymentStatus: paymentStatus ?? this.paymentStatus,
         laundryStatus: laundryStatus ?? this.laundryStatus,
         createdAt: createdAt,
@@ -163,6 +171,7 @@ class TransactionEntity extends Equatable {
         hasProofImage: hasProofImage ?? this.hasProofImage,
         hasEstimatedFinish: hasEstimatedFinish,
         details: details,
+        payments: payments,
       );
 
   @override
@@ -173,11 +182,40 @@ class TransactionEntity extends Equatable {
         total,
         paidAmount,
         paymentStatus,
+        paymentDestinationId,
         laundryStatus,
         hasProofImage,
         hasEstimatedFinish,
         details,
+        payments,
       ];
+}
+
+class TransactionPaymentRecord {
+  const TransactionPaymentRecord(
+      {required this.amount,
+      required this.method,
+      this.paidAt,
+      this.destinationLabel,
+      this.recorderName,
+      this.note});
+  final int amount;
+  final String method;
+  final DateTime? paidAt;
+  final String? destinationLabel;
+  final String? recorderName;
+  final String? note;
+
+  factory TransactionPaymentRecord.fromJson(Map<String, dynamic> json) {
+    final recorder = json['recorder'];
+    return TransactionPaymentRecord(
+        amount: (num.tryParse(json['amount'].toString()) ?? 0).round(),
+        method: json['payment_method']?.toString() ?? '',
+        paidAt: DateTime.tryParse(json['paid_at']?.toString() ?? ''),
+        destinationLabel: json['payment_destination_label']?.toString(),
+        recorderName: recorder is Map ? recorder['name']?.toString() : null,
+        note: json['notes']?.toString());
+  }
 }
 
 class TransactionLineEntity extends Equatable {

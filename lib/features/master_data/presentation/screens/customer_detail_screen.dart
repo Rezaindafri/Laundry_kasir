@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/widgets/page_visibility_refresh.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/whatsapp_launcher.dart';
@@ -15,8 +16,11 @@ class CustomerDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cached = ref.exists(transactionsProvider);
     final transactions = ref.watch(transactionsProvider);
-    return Scaffold(
+    return PageVisibilityRefresh(refreshOnMount: cached, onVisible: () async {
+      if (!ref.read(transactionsProvider).isLoading) await ref.read(transactionsProvider.notifier).refresh();
+    }, child: Scaffold(
       appBar: AppBar(title: const Text('Detail Pelanggan')),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -135,7 +139,7 @@ class CustomerDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

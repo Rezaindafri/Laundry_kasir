@@ -44,6 +44,18 @@ final laundrySettingsProvider =
 );
 
 class LaundrySettingsNotifier extends AsyncNotifier<LaundrySettings> {
+  Future<void> refresh() async {
+    final current = state.valueOrNull;
+    try {
+      final remote = await ref.read(settingsRemoteDataSourceProvider).getSettings();
+      if (current != null) {
+        state = AsyncData(remote.copyWith(paperSize: current.paperSize,
+          defaultPrinter: current.defaultPrinter, defaultPrinterName: current.defaultPrinterName));
+      } else { state = AsyncData(remote); }
+    } catch (_) {
+      // Do not discard an unsaved settings form when connectivity is lost.
+    }
+  }
   @override
   Future<LaundrySettings> build() async {
     final ownerScopeId = ref.watch(currentOperationalOwnerScopeIdProvider);

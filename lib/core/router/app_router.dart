@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'active_page_refresh.dart';
+import '../widgets/page_visibility_refresh.dart';
 
 import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/auth/presentation/providers/splash_intro_provider.dart';
@@ -52,6 +54,7 @@ class AppTabTransition {
 final appRouteObserver = RouteObserver<ModalRoute<dynamic>>();
 
 Page<void> _tabPage(GoRouterState state, Widget child) {
+  child = ActivePageRefresh(path: state.uri.path, child: child);
   final transition =
       state.extra is AppTabTransition ? state.extra as AppTabTransition : null;
   if (transition == null) {
@@ -138,7 +141,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LoginScreen(),
       ),
       ShellRoute(
-        observers: [appRouteObserver],
+        observers: [appRouteObserver, pageRefreshObserver],
         builder: (context, state, child) => PersistentTabShell(child: child),
         routes: [
           GoRoute(
@@ -284,7 +287,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   ? null
                   : AppRoutes.dashboard;
             },
-            builder: (context, state) => const LaundryServicesScreen(),
+            builder: (context, state) => const ActivePageRefresh(
+                path: AppRoutes.services, child: LaundryServicesScreen()),
           ),
           GoRoute(
             path: AppRoutes.auditLogs,
@@ -300,7 +304,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
                     ? null
                     : AppRoutes.dashboard,
-            builder: (context, state) => const ExpensesScreen(),
+            builder: (context, state) => const ActivePageRefresh(
+                path: AppRoutes.expenses, child: ExpensesScreen()),
           ),
         ],
       ),

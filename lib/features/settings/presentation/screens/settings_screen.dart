@@ -16,6 +16,7 @@ import '../../../printing/domain/entities/printer_device.dart';
 import '../../../printing/presentation/providers/printing_providers.dart';
 import '../../domain/entities/laundry_settings.dart';
 import '../providers/settings_providers.dart';
+import 'payment_destinations_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -116,6 +117,15 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   String? _printerMac;
   String? _printerName;
   bool _loadingPrinters = false;
+
+  @override
+  void didUpdateWidget(covariant _SettingsForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Apply refreshed server values only to untouched fields, never a draft.
+    if (_name.text == oldWidget.value.businessName) _name.text = widget.value.businessName;
+    if (_phone.text == oldWidget.value.phone) _phone.text = widget.value.phone;
+    if (_address.text == oldWidget.value.address) _address.text = widget.value.address;
+  }
 
   @override
   void initState() {
@@ -233,6 +243,13 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
         const _ProfileSection(),
         const SizedBox(height: 24),
         Text('Informasi Usaha', style: Theme.of(context).textTheme.titleMedium),
+        if (canManageBusiness)
+          Card(child: ListTile(leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: const Text('Tujuan pembayaran'),
+              subtitle: const Text('QRIS usaha dan rekening transfer bank'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => const PaymentDestinationsScreen())))),
         if (!canManageBusiness) ...[
           const SizedBox(height: 4),
           Text(

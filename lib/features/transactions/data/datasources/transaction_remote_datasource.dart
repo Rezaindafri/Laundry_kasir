@@ -9,6 +9,7 @@ import '../models/transaction_page_model.dart';
 
 abstract class TransactionRemoteDataSource {
   Future<List<TransactionModel>> getTransactions();
+  Future<TransactionModel> getTransaction(String id);
   Future<TransactionPageModel> getTransactionsPage(Map<String, dynamic> query);
   Future<TransactionModel> createTransaction(
       {required TransactionModel transaction});
@@ -18,6 +19,7 @@ abstract class TransactionRemoteDataSource {
       {required String id,
       required int amount,
       required String method,
+      int? destinationId,
       String? note,
       required String requestId});
   Future<TransactionModel> collectTransaction({
@@ -38,16 +40,30 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   const TransactionRemoteDataSourceImpl(this.dio);
 
   @override
+  Future<TransactionModel> getTransaction(String id) async {
+    try {
+      final response = await dio.get(ApiEndpoints.transactionById(id));
+      return TransactionModel.fromJson(
+          Map<String, dynamic>.from(response.data['data'] as Map));
+    } on DioException catch (error) {
+      throw ServerException('Detail transaksi belum dapat dimuat.',
+          statusCode: error.response?.statusCode);
+    }
+  }
+
+  @override
   Future<TransactionModel> recordPayment(
       {required String id,
       required int amount,
       required String method,
+      int? destinationId,
       String? note,
       required String requestId}) async {
     try {
       final response = await dio.post(ApiEndpoints.payment(id), data: {
         'amount': amount,
         'payment_method': method,
+        if (destinationId != null) 'payment_destination_id': destinationId,
         'payment_note': note,
         'request_id': requestId,
       });
@@ -211,6 +227,8 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
         // konsisten untuk rule `boolean`, sedangkan string "true" tidak.
         'settle_payment': settlePayment ? 1 : 0,
         'payment_method': transaction.paymentMethod,
+        if (transaction.paymentDestinationId != null)
+          'payment_destination_id': transaction.paymentDestinationId,
         if (detailIds != null) 'detail_ids': detailIds,
         if (paymentAmount != null) 'payment_amount': paymentAmount,
         if (paymentNote != null) 'payment_note': paymentNote,

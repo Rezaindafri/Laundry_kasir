@@ -1,6 +1,6 @@
 # Dokumentasi Proyek KarsaOne
 
-Pembaruan: **11 Oktober 2026**, berdasarkan kode Flutter/Laravel, pengujian backend 9–10 Oktober dan Flutter 11 Oktober. Nama file historis dipertahankan agar tautan lama tetap berlaku.
+Pembaruan: **11 Oktober 2026**, berdasarkan kode Flutter/Laravel, pengujian menyeluruh backend/Flutter serta migrasi tambahan tujuan pembayaran pada tanggal tersebut. Nama file historis dipertahankan agar tautan lama tetap berlaku.
 
 ## 1. Produk dan batas cakupan
 
@@ -141,9 +141,18 @@ Scheduler laundry:sync-statuses setiap menit dengan withoutOverlapping. Sebagian
 Pembayaran:
 
 - “Bayar Saja” membuka input nominal diterima, metode dan catatan opsional; bisa DP/pelunasan sebelum siap, nonaktif setelah lunas. Pembayaran tidak otomatis mengambil barang.
+- Tujuan pembayaran milik Owner tersedia untuk Owner/Kasir kelompok yang sama: QRIS menampilkan gambar privat, transfer menampilkan pilihan beberapa bank/rekening/pemilik, tunai tanpa pilihan tambahan. Transaksi Baru, Bayar Saja dan Bayar & Ambil mengirim `payment_destination_id` ke Laravel ketika ada pembayaran baru. Laravel menolak tujuan nonaktif, salah metode atau milik Owner lain. Jika sudah dikonfigurasi untuk metode tersebut, pemilihan tujuan diwajibkan backend; metode lama tanpa konfigurasi tetap kompatibel.
+- Ledger menyimpan ID tujuan dan snapshot label bank/tujuan saat pembayaran, tanpa menyalin nomor rekening plaintext. Retry UUID yang sama harus mempertahankan tujuan, nominal, metode dan catatan; tidak membuat pembayaran kedua. Detail mengambil `GET /transactions/{id}` dan menampilkan tanggal/nominal/metode/tujuan/pencatat/catatan yang benar-benar tersedia.
+- Bagian Bukti pengambilan di Detail menampilkan pratinjau dan tombol foto per baris layanan; dapat diperbesar melalui akses API berizin. Foto lama yang tersedia juga dapat dilihat. Foto opsional dan bukan bukti transfer; alur upload bukti pembayaran baru tidak ditambahkan pada tahap ini.
 - “Bayar & Ambil” memilih baris layanan siap dan mencatat nominal tambahan yang menutup nilai layanan yang diambil; menjadi “Ambil” jika sudah lunas.
+- Nominal awal otomatis: Transaksi Baru memakai total seluruh layanan termasuk Express; Bayar Saja memakai sisa tagihan, bukan total sebelum DP; Bayar & Ambil memakai kebutuhan pembayaran layanan terpilih setelah memperhitungkan DP/pengambilan terdahulu. Pengambilan terakhir memakai seluruh sisa bon, dan transaksi lunas memakai 0 tanpa pembayaran tambahan.
+- Kolom angka otomatis terseleksi saat disentuh, sehingga ketikan pertama mengganti angka tersebut, bukan menambah digit di belakangnya. Setelah diedit, kursor bekerja normal dan nominal manual tidak diisi ulang ketika layanan/berat/Express berubah. Nominal otomatis yang belum diedit mengikuti perubahan tagihan.
+- Pada Transaksi Baru, kolom pembayaran tersedia untuk pilihan Lunas/DP; nominal penuh otomatis berstatus Lunas, nominal sebagian berstatus DP. Memilih Lunas secara eksplisit mengembalikan nominal ke total terkini. Belum Bayar tetap mengirim 0. Nominal kosong, 0 pada pilihan membayar, atau melebihi tagihan ditolak sebelum dikirim; Laravel tetap menghitung harga/status dan memvalidasi pembayaran secara otoritatif.
+- Retry Bayar Saja mempertahankan nominal/metode/catatan dan ID request yang gagal bila tidak diubah, bukan menggantinya dengan autofill; perubahan nominal menghasilkan ID baru sesuai mekanisme yang ada.
 - Pengambilan sebelum siap ditolak Laravel. Berlaku untuk seluruh kuantitas baris terpilih; pengambilan sebagian kuantitas satu baris belum tersedia. Foto opsional.
 - DP sebelumnya mengurangi kebutuhan bayar. Pengambilan terakhir wajib melunasi seluruh bon; pengambilan awal dapat menyisakan DP dan baris belum diambil.
+- Setelah API pembayaran/pengambilan menyatakan sukses, layar kembali otomatis ke pencarian Pengambilan dan mengambil ulang daftar dari backend. Filter/pencarian halaman asal dipertahankan; transaksi `collected` tidak muncul lagi, sedangkan pembayaran saja dan pengambilan sebagian tetap terdaftar dengan status terbaru. Kegagalan API tetap menahan pengguna di formulir agar dapat dicoba lagi.
+- Back dari detail/pengambilan juga memuat ulang daftar. Refresh tarik-ke-bawah tersedia pada daftar panjang, pendek, kosong maupun gagal dimuat; respons pagination yang berasal dari query sebelum refresh diabaikan agar tidak mengembalikan transaksi yang sudah diambil.
 - File baru disimpan privat; GET `/transactions/{id}/proof?detail_id=...` membaca bukti per baris dengan autentikasi, role dan scope Owner. URL statis bukti lama ditolak melalui aturan server yang perlu diverifikasi pada hosting.
 - Boolean multipart harus sesuai validator Laravel; collection dengan 0/1 diuji.
 
@@ -210,9 +219,12 @@ Settings:
 
 - Profil/password yang diizinkan dikirim ke backend.
 - Nama/telepon/alamat usaha per Owner di Laravel.
+- Setting → Tujuan pembayaran: Owner menambah/mengubah/menonaktifkan QRIS atau beberapa rekening. Nomor rekening memakai encrypted cast Laravel pada kolom TEXT; tidak tersimpan di preferences Flutter dan tidak masuk audit/log request. Gambar QRIS disimpan privat pada disk `proofs/payment-qris`, dibatasi JPG/PNG/WebP, 2 MB, maksimal 2048 × 2048. Kasir hanya membaca tujuan aktif milik kelompoknya; Super Owner tidak memperoleh fitur operasional ini.
+- Tujuan tidak dihapus agar ledger historis tetap terhubung. Label historis pembayaran dipertahankan saat nama/rekening diubah. `APP_KEY` harus disimpan privat dan dibackup aman; jangan menjalankan key regeneration sembarangan. Enkripsi penyimpanan tidak menggantikan HTTPS.
 - Printer/default MAC/ukuran kertas adalah preferensi perangkat, bukan konfigurasi global server.
 - Super Owner memakai settings akun/sistem, bukan printer/informasi usaha pribadinya.
 - Backup v2 owner_configuration_backup berisi konfigurasi usaha, **bukan** database/akun/password/pelanggan/transaksi.
+- Backup konfigurasi tersebut juga belum mencakup tujuan pembayaran dan gambar QRIS. Backup server harus mencakup database/file privat dan kunci enkripsi yang dilindungi, bukan hanya ekspor konfigurasi UI.
 - Restore hanya Super Owner; seluruh Owner divalidasi sebelum penulisan, Owner duplikat ditolak, dan semua baris berada dalam satu DB transaction. Rollback baris kedua yang gagal diuji.
 - Cache usaha Flutter disimpan sebelum remote save; gagal server dapat meninggalkan cache berbeda.
 
@@ -234,7 +246,7 @@ Batas:
 
 - Printer service mendukung Android; platform lain memakai stub/penolakan.
 - Direct-share WhatsApp Android; WhatsApp biasa/Business/nomor belum disimpan perlu tes perangkat.
-- Scanner ada, tetapi controller stop/analyzeImage tidak dipasang ke MobileScanner; perlu koreksi dan uji lifecycle.
+- Controller scanner sudah dipasang ke MobileScanner dan diuji dengan mock lifecycle/Back; pengujian kamera fisik tetap diperlukan.
 - iOS mempunyai scaffolding/camera permission, tetapi izin photo library belum tertera. Build/signing/printer/galeri/share iOS belum diuji.
 - Web tidak membuktikan kesetaraan fitur perangkat Android/iOS.
 
@@ -259,6 +271,8 @@ Semua path berawalan /api. Izin efektif dari middleware dan controller.
 | Audit | GET /audit-logs | Owner |
 | Pengeluaran | GET/POST /expenses; PUT/PATCH/DELETE /expenses/{id} | Owner |
 | Usaha | GET/PATCH /settings | Kasir/Owner baca; Owner ubah |
+| Tujuan pembayaran | GET /settings/payment-destinations; GET /settings/payment-destinations/{id}/image | Owner/Kasir, kelompok sendiri; Kasir hanya tujuan aktif |
+| Kelola tujuan | POST /settings/payment-destinations; PATCH /settings/payment-destinations/{id} | Owner, kelompok sendiri; multipart update dapat memakai POST + _method=PATCH |
 | Sistem | GET/PATCH /system-settings; GET /account-policy | Super Owner; policy juga Owner |
 | Config backup | GET /settings/backup; POST /settings/restore | Super Owner |
 
@@ -268,13 +282,19 @@ Sebagian deklarasi role master data menyebut Super Owner, tetapi OwnerScopeServi
 
 Migrasi maju 2026_10_10_000006 sudah diterapkan pada Laragon setelah pemeriksaan pending dan checksum read-only sebelum/sesudah. Kolom asli transaksi/detail/pembayaran serta metadata pelanggan/layanan yang dibandingkan tetap identik. Tidak reset, menghapus data, seed akun nyata, atau mengubah kredensial/config produksi. PHPUnit menjalankan migrasi fixture pada SQLite :memory: dengan environment testing, DB_URL kosong, cache/session array, queue sync. Upload memakai storage fake.
 
-- Backend normal dan regresi: 87/87 lulus, 621 assertions; termasuk multi-layanan, pembayaran idempotent, pengambilan bertahap, bukti privat, isolasi Owner dan migrasi legacy.
+- Backend normal dan regresi terbaru: 95/95 lulus, 707 assertions; termasuk 8 tes baru/86 assertions tujuan pembayaran, enkripsi, validasi upload, isolasi Owner, ledger, rollback pengambilan dan retry setelah tujuan dinonaktifkan.
 - Audit tambahan: 13/13 lulus, 105 assertions; sebelumnya 9 gagal.
-- Flutter: 97 lulus pada 11 Oktober; termasuk 29 regresi lifecycle popup, Back ketiga role, drawer, scanner, respons terlambat, dan penyimpanan tertunda. Sebelas regresi pilihan pelanggan/layanan serta seluruh regresi pembayaran, bon, login dan WIB tetap lulus tanpa perangkat/API nyata.
-- Dart: pemeriksaan menyeluruh sebelumnya 0 error, 12 warning lama; 13 file navigasi/form dan tes diperiksa 11 Oktober dengan 0 error/warning serta 343 lint/hint informasi. Bukan pernyataan bahwa seluruh proyek bebas lint.
+- Flutter: 138 lulus pada 11 Oktober; 12 regresi tambahan meliputi rekening/QRIS, kegagalan/retry pemilihan, foto detail, callback navigasi yang tidak dipicu popup, payload tujuan pada create/pay/collect dan riwayat legacy. Regresi nominal otomatis/manual, pengambilan kembali/refresh, popup/Back/scanner, pilihan, bon, login dan WIB tetap lulus tanpa API/perangkat nyata.
+- Regresi daftar Pengambilan memeriksa pembayaran penuh/sebagian, pengambilan lunas/sebagian, kegagalan API, Back/pembatalan modal, pencarian yang dipertahankan, pull refresh kosong/pendek/error, respons pagination terlambat serta masuk dari detail/rute QR. Tidak mengubah Laravel/database pada tahap navigasi; tetap menggunakan repository dan endpoint produksi yang sudah ada, tetapi tes baru memakai repository tiruan.
+- Laravel: 3 regresi pembayaran/pengambilan bertahap/idempotensi dan penolakan akses owner lain diulang 11 Oktober; 35 assertions lulus memakai SQLite di memori, tanpa database Laragon. Tidak mengubah kode backend pada tahap autofill ini.
+- Dart lib/test terbaru: 0 error, 11 warning dan 1016 lint/hint informasi. Warning tersisa pada model auth/dashboard Owner lama. Bukan pernyataan bahwa seluruh proyek bebas lint. Keyboard Android/iOS fisik dan E2E server nyata belum diuji; tidak menjalankan build Gradle atau mengunduh dependensi pada tahap ini.
 - Composer runtime dan seluruh lockfile: 0 advisori setelah upgrade tiga paket; validasi Composer dan persyaratan platform lokal lolos.
 
 Cara testing aman di README. UI test tidak memakai API nyata; API test tidak memakai database pelanggan asli. Tes injection/upload adalah sampel negatif, bukan penetration test lengkap.
+
+Migrasi tambahan `2026_10_11_000007_add_owner_payment_destinations.php` telah diterapkan pada Laragon lokal: tabel baru dan dua kolom nullable ledger, tanpa reset/seed/hapus data. Pemeriksaan sebelum/sesudah membandingkan jumlah baris dan checksum seluruh kolom lama pada users/customers/services/transactions/transaction_details/transaction_payments/laundry_settings; identik. Script lokal `scripts/verify_payment_destination_migration.php` menolak lingkungan produksi/non-MySQL/non-localhost; tanpa `--apply` hanya memeriksa. Tidak memasukkan QRIS/rekening nyata untuk tes.
+
+Refresh navigasi memuat data server saat membuka/kembali ke halaman, tanpa mereset filter/draft atau auth/router. Data yang belum pernah dimuat tidak diminta dua kali saat mount. Menutup dialog/bottom sheet tidak memicu reload; refresh daftar sesudah pembayaran yang sudah dijalankan tidak digandakan. Refresh mengikuti role (Super Owner tetap struktur akun saja), bukan polling background atau jaminan live update selama pengguna diam di halaman. Detail kontrak dan cek manual: [tujuan pembayaran dan refresh](docs/TUJUAN_PEMBAYARAN_REFRESH_2026-10-11.md).
 
 ## 12. Temuan terbuka dan urutan lanjutan
 

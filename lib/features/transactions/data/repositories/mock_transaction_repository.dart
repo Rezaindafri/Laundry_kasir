@@ -17,6 +17,15 @@ class MockTransactionRepository implements TransactionRepository {
       Success(List.unmodifiable(_items));
 
   @override
+  Future<Result<TransactionEntity>> getById(String id) async {
+    final result = await getTransactions();
+    return result.when(success: (items) {
+      final match = items.where((item) => item.id == id).firstOrNull;
+      return match == null ? const Error(ServerFailure('Transaksi tidak ditemukan.')) : Success(match);
+    }, error: Error.new);
+  }
+
+  @override
   Future<Result<TransactionPageEntity>> getTransactionsPage(
     Map<String, dynamic> query,
   ) async {

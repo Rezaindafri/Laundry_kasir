@@ -272,6 +272,10 @@ Future<GoRouter> _shell(WidgetTester tester,
               path: AppRoutes.qrScanner,
               builder: (_, __) => const QrScannerScreen()),
           GoRoute(
+              path: AppRoutes.collections,
+              builder: (_, __) =>
+                  const TransactionsScreen(isCollectionMode: true)),
+          GoRoute(
               path: AppRoutes.collectionSettlement,
               builder: (_, state) => CollectionSettlementScreen(
                   transaction: state.extra! as TransactionEntity)),
@@ -576,6 +580,8 @@ void main() {
           laundryStatus:
               collect ? LaundryStatus.collected : LaundryStatus.completed)));
       await tester.pumpAndSettle();
+      expect(find.text('Pengambilan'), findsOneWidget);
+      expect(find.byType(CollectionSettlementScreen), findsNothing);
       await _back(tester);
       expect(find.text('Beranda uji'), findsOneWidget);
       expect(tester.takeException(), isNull);
