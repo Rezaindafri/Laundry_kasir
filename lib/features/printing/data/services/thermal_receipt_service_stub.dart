@@ -4,7 +4,9 @@ import '../../../transactions/domain/entities/transaction_entity.dart';
 /// plugin. Kontrak tetap sama supaya seluruh aplikasi tetap dapat dijalankan.
 class ThermalReceiptService {
   static String buildEstimateSummary(TransactionEntity transaction) {
-    final diff = transaction.estimatedFinishAt.difference(transaction.createdAt);
+    if (!transaction.hasEstimatedFinish) return 'tanpa estimasi';
+    final diff =
+        transaction.estimatedFinishAt.difference(transaction.createdAt);
     final totalHours = diff.inHours;
     if (totalHours <= 0) return 'segera';
 

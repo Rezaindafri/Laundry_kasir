@@ -20,7 +20,8 @@ class TransactionPageModel {
     return TransactionPageModel(
       items: data
           .whereType<Map>()
-          .map((item) => TransactionModel.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              TransactionModel.fromJson(Map<String, dynamic>.from(item)))
           .toList(),
       currentPage: (meta['current_page'] as num?)?.toInt() ?? 1,
       lastPage: (meta['last_page'] as num?)?.toInt() ?? 1,

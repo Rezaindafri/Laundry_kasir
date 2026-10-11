@@ -21,6 +21,7 @@ class PaymentReportItem {
   final DateTime? paidAt;
   final String source;
   final String? recorderName;
+  final String? note;
 
   const PaymentReportItem({
     required this.id,
@@ -32,6 +33,7 @@ class PaymentReportItem {
     required this.paidAt,
     required this.source,
     required this.recorderName,
+    this.note,
   });
 
   factory PaymentReportItem.fromJson(Map<String, dynamic> json) {
@@ -46,6 +48,7 @@ class PaymentReportItem {
       paidAt: DateTime.tryParse(json['paid_at']?.toString() ?? ''),
       source: json['payment_source']?.toString() ?? 'payment',
       recorderName: recorder is Map ? recorder['name']?.toString() : null,
+      note: json['payment_note']?.toString(),
     );
   }
 }
@@ -167,8 +170,10 @@ class OwnerReportOverview {
     final operational = _map(json['operational']);
     final methods = _map(json['payment_methods']);
     return OwnerReportOverview(
-      startDate: DateTime.tryParse(period['start_date']?.toString() ?? '') ?? DateTime.now(),
-      endDate: DateTime.tryParse(period['end_date']?.toString() ?? '') ?? DateTime.now(),
+      startDate: DateTime.tryParse(period['start_date']?.toString() ?? '') ??
+          DateTime.now(),
+      endDate: DateTime.tryParse(period['end_date']?.toString() ?? '') ??
+          DateTime.now(),
       orderValue: _asInt(summary['order_value']),
       paymentsReceived: _asInt(summary['payments_received']),
       outstandingAmount: _asInt(summary['outstanding_amount']),
@@ -179,7 +184,8 @@ class OwnerReportOverview {
       late: _asInt(operational['late']),
       readyToPickup: _asInt(operational['ready_to_pickup']),
       inProgress: _asInt(operational['in_progress']),
-      payments: _list(json['payments']).map(PaymentReportItem.fromJson).toList(),
+      payments:
+          _list(json['payments']).map(PaymentReportItem.fromJson).toList(),
       outstandingItems: _list(json['outstanding_items'])
           .map(OutstandingReportItem.fromJson)
           .toList(),
@@ -192,7 +198,8 @@ class OwnerReportOverview {
       expensesTotal: _asInt(summary['expenses_total']),
       expenseCount: _asInt(summary['expense_count']),
       netCash: _asInt(summary['net_cash']),
-      expenses: _list(json['expenses']).map(ExpenseReportItem.fromJson).toList(),
+      expenses:
+          _list(json['expenses']).map(ExpenseReportItem.fromJson).toList(),
     );
   }
 }
@@ -243,7 +250,10 @@ Map<String, dynamic> _map(dynamic value) =>
     value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
 
 List<Map<String, dynamic>> _list(dynamic value) => value is List
-    ? value.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+    ? value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList()
     : const [];
 
 int _asInt(dynamic value) =>

@@ -14,13 +14,22 @@ abstract class TransactionRemoteDataSource {
       {required TransactionModel transaction});
   Future<TransactionModel> updateTransaction(
       {required TransactionModel transaction});
+  Future<TransactionModel> recordPayment(
+      {required String id,
+      required int amount,
+      required String method,
+      String? note,
+      required String requestId});
   Future<TransactionModel> collectTransaction({
     required TransactionModel transaction,
     required bool settlePayment,
     Uint8List? proofImage,
+    List<String>? detailIds,
+    int? paymentAmount,
+    String? paymentNote,
   });
   Future<void> deleteTransaction(String id);
-  Future<Uint8List> downloadProof(String id);
+  Future<Uint8List> downloadProof(String id, {String? detailId});
 }
 
 class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
@@ -29,10 +38,35 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   const TransactionRemoteDataSourceImpl(this.dio);
 
   @override
-  Future<Uint8List> downloadProof(String id) async {
+  Future<TransactionModel> recordPayment(
+      {required String id,
+      required int amount,
+      required String method,
+      String? note,
+      required String requestId}) async {
+    try {
+      final response = await dio.post(ApiEndpoints.payment(id), data: {
+        'amount': amount,
+        'payment_method': method,
+        'payment_note': note,
+        'request_id': requestId,
+      });
+      return TransactionModel.fromJson(
+          Map<String, dynamic>.from(response.data['data'] as Map));
+    } on DioException catch (error) {
+      throw ServerException(
+          error.response?.data?['message']?.toString() ??
+              'Gagal mencatat pembayaran.',
+          statusCode: error.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<Uint8List> downloadProof(String id, {String? detailId}) async {
     try {
       final response = await dio.get<List<int>>(
         ApiEndpoints.transactionProof(id),
+        queryParameters: {if (detailId != null) 'detail_id': detailId},
         options: Options(responseType: ResponseType.bytes),
       );
       return Uint8List.fromList(response.data ?? const []);
@@ -167,6 +201,9 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
     required TransactionModel transaction,
     required bool settlePayment,
     Uint8List? proofImage,
+    List<String>? detailIds,
+    int? paymentAmount,
+    String? paymentNote,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -174,6 +211,9 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
         // konsisten untuk rule `boolean`, sedangkan string "true" tidak.
         'settle_payment': settlePayment ? 1 : 0,
         'payment_method': transaction.paymentMethod,
+        if (detailIds != null) 'detail_ids': detailIds,
+        if (paymentAmount != null) 'payment_amount': paymentAmount,
+        if (paymentNote != null) 'payment_note': paymentNote,
       };
       if (proofImage != null) {
         data['proof_image'] = MultipartFile.fromBytes(
@@ -183,7 +223,7 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
       }
       final response = await dio.post(
         ApiEndpoints.collection(transaction.id.toString()),
-        data: FormData.fromMap(data),
+        data: FormData.fromMap(data, ListFormat.multiCompatible),
         options: Options(headers: {'Accept': 'application/json'}),
       );
       final payload = response.data is Map<String, dynamic>

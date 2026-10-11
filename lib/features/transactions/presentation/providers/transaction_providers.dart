@@ -31,6 +31,13 @@ final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
     remoteDataSource: ref.watch(transactionRemoteDataSourceProvider),
   );
 });
+final transactionLineProofProvider =
+    FutureProvider.autoDispose.family<Uint8List, (String, String)>((ref, key) {
+  ref.watch(currentSessionUserIdProvider);
+  return ref
+      .watch(transactionRemoteDataSourceProvider)
+      .downloadProof(key.$1, detailId: key.$2);
+});
 final transactionsProvider =
     AsyncNotifierProvider<TransactionsNotifier, List<TransactionEntity>>(
   TransactionsNotifier.new,
@@ -96,11 +103,17 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
     required TransactionEntity transaction,
     required bool settlePayment,
     Uint8List? proofImage,
+    List<String>? detailIds,
+    int? paymentAmount,
+    String? paymentNote,
   }) async {
     final result = await ref.read(transactionRepositoryProvider).collect(
           transaction: transaction,
           settlePayment: settlePayment,
           proofImage: proofImage,
+          detailIds: detailIds,
+          paymentAmount: paymentAmount,
+          paymentNote: paymentNote,
         );
     result.when(
       success: (item) {
@@ -124,6 +137,29 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
       },
       error: (_) {},
     );
+    return result;
+  }
+
+  Future<Result<TransactionEntity>> pay(
+      {required TransactionEntity transaction,
+      required int amount,
+      required PaymentMethod method,
+      String? note,
+      required String requestId}) async {
+    final result = await ref.read(transactionRepositoryProvider).pay(
+        transaction: transaction,
+        amount: amount,
+        method: method,
+        note: note,
+        requestId: requestId);
+    result.when(
+        success: (item) {
+          final items = <TransactionEntity>[...(state.valueOrNull ?? [])];
+          final index = items.indexWhere((value) => value.id == item.id);
+          if (index >= 0) items[index] = item;
+          state = AsyncData(items);
+        },
+        error: (_) {});
     return result;
   }
 }

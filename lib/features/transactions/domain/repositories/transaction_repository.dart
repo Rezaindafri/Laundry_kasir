@@ -11,10 +11,19 @@ abstract class TransactionRepository {
   );
   Future<Result<TransactionEntity>> create(TransactionEntity transaction);
   Future<Result<TransactionEntity>> update(TransactionEntity transaction);
+  Future<Result<TransactionEntity>> pay(
+      {required TransactionEntity transaction,
+      required int amount,
+      required PaymentMethod method,
+      String? note,
+      required String requestId});
   Future<Result<TransactionEntity>> collect({
     required TransactionEntity transaction,
     required bool settlePayment,
     Uint8List? proofImage,
+    List<String>? detailIds,
+    int? paymentAmount,
+    String? paymentNote,
   });
   Future<Result<void>> delete(String id);
 }

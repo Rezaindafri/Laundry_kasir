@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../core/widgets/navigation_write_guard.dart';
+import '../../../../core/widgets/safe_modal_sheet.dart';
 import '../../../../shared/enums/user_role.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -31,7 +33,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
       _superOwnerSection = widget.initialCreateRole!;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
+      if (!isCurrentPage(context) ||
           _openedRequestedForm ||
           widget.initialCreateRole == null) {
         return;
@@ -68,7 +70,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
         owner.id: owner.name,
     };
 
-    return Scaffold(
+    return NavigationWriteGuard(
+        child: Scaffold(
       drawer: AppNavigationDrawer(user: current),
       appBar: AppBar(
         title: Text(
@@ -82,9 +85,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           context,
           ref,
           current.role,
-          initialRole: current.role == UserRole.superOwner
-              ? _superOwnerSection
-              : null,
+          initialRole:
+              current.role == UserRole.superOwner ? _superOwnerSection : null,
           passwordMinLength: passwordMinLength,
         ),
         icon: const Icon(Icons.person_add_alt_1),
@@ -124,49 +126,50 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                   ],
                 )
               : ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: visibleUsers.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (_, index) {
-              final user = visibleUsers[index];
-            final editable = user.role != UserRole.superOwner ||
-                current.role == UserRole.superOwner;
-            final ownerLabel = current.role == UserRole.superOwner &&
-                    user.role == UserRole.kasir
-                ? ' • Owner: ${ownerNames[user.ownerId] ?? 'Belum ditetapkan'}'
-                : '';
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.profileAvatar,
-                  foregroundColor: AppColors.profileAvatarText,
-                  child: Text(
-                    user.name.substring(0, 1).toUpperCase(),
-                    style: const TextStyle(color: AppColors.profileAvatarText),
-                  ),
-                ),
-                title: Text(user.name),
-                subtitle:
-                    Text('@${user.username} • ${user.role.label}$ownerLabel'),
-                trailing: Switch(
-                  value: user.isActive,
-                  onChanged: !editable
-                      ? null
-                      : (_) => _toggleStatus(context, ref, user),
-                ),
-                onTap: !editable
-                    ? null
-                    : () => _showUserForm(
-                          context,
-                          ref,
-                          current.role,
-                          user: user,
-                          passwordMinLength: passwordMinLength,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: visibleUsers.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (_, index) {
+                    final user = visibleUsers[index];
+                    final editable = user.role != UserRole.superOwner ||
+                        current.role == UserRole.superOwner;
+                    final ownerLabel = current.role == UserRole.superOwner &&
+                            user.role == UserRole.kasir
+                        ? ' • Owner: ${ownerNames[user.ownerId] ?? 'Belum ditetapkan'}'
+                        : '';
+                    return Card(
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.profileAvatar,
+                          foregroundColor: AppColors.profileAvatarText,
+                          child: Text(
+                            user.name.substring(0, 1).toUpperCase(),
+                            style: const TextStyle(
+                                color: AppColors.profileAvatarText),
+                          ),
                         ),
-              ),
-            );
-            },
-          );
+                        title: Text(user.name),
+                        subtitle: Text(
+                            '@${user.username} • ${user.role.label}$ownerLabel'),
+                        trailing: Switch(
+                          value: user.isActive,
+                          onChanged: !editable
+                              ? null
+                              : (_) => _toggleStatus(context, ref, user),
+                        ),
+                        onTap: !editable
+                            ? null
+                            : () => _showUserForm(
+                                  context,
+                                  ref,
+                                  current.role,
+                                  user: user,
+                                  passwordMinLength: passwordMinLength,
+                                ),
+                      ),
+                    );
+                  },
+                );
 
           if (current.role != UserRole.superOwner) return list;
           return Column(
@@ -197,7 +200,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           );
         },
       ),
-    );
+    ));
   }
 }
 
@@ -228,9 +231,10 @@ Future<void> _showUserForm(
 
   if (!roles.contains(role)) role = roles.first;
 
-  final result = await showModalBottomSheet<_UserFormResult>(
+  final result = await showSafeModalBottomSheet<_UserFormResult>(
     context: context,
     isScrollControlled: true,
+    controllers: [name, username, password],
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setState) => SafeArea(
         child: SingleChildScrollView(
@@ -277,8 +281,8 @@ Future<void> _showUserForm(
                     decoration: const InputDecoration(labelText: 'Password'),
                     validator: (value) =>
                         value == null || value.length < passwordMinLength
-                        ? 'Password minimal $passwordMinLength karakter'
-                        : null,
+                            ? 'Password minimal $passwordMinLength karakter'
+                            : null,
                   ),
                 ],
                 const SizedBox(height: 12),
@@ -382,9 +386,7 @@ Future<void> _showUserForm(
     ),
   );
 
-  name.dispose();
-  username.dispose();
-  password.dispose();
+  if (!isCurrentPage(context)) return;
   if (result != null && result.openCredentials && user != null) {
     if (context.mounted) {
       await _showCredentialEditor(
@@ -398,9 +400,11 @@ Future<void> _showUserForm(
     return;
   }
   if (result != null) {
-    final saved = await ref
-        .read(managedUsersProvider.notifier)
-        .saveUser(result.user, password: result.password);
+    final saved = await withNavigationWriteLock(
+        ref,
+        () => ref
+            .read(managedUsersProvider.notifier)
+            .saveUser(result.user, password: result.password));
     if (context.mounted) {
       saved.when(
         success: (_) => ScaffoldMessenger.of(context).showSnackBar(
@@ -425,8 +429,8 @@ Future<void> _toggleStatus(
   WidgetRef ref,
   UserEntity user,
 ) async {
-  final result =
-      await ref.read(managedUsersProvider.notifier).toggleUserStatus(user.id);
+  final result = await withNavigationWriteLock(ref,
+      () => ref.read(managedUsersProvider.notifier).toggleUserStatus(user.id));
   if (!context.mounted) return;
   result.when(
     success: (_) => ScaffoldMessenger.of(context).showSnackBar(
@@ -462,9 +466,16 @@ Future<void> _showCredentialEditor(
   final username = TextEditingController(text: user.username);
   final newPassword = TextEditingController();
 
-  final result = await showModalBottomSheet<_CredentialUpdate>(
+  final result = await showSafeModalBottomSheet<_CredentialUpdate>(
     context: context,
     isScrollControlled: true,
+    controllers: [
+      managerUsername,
+      managerPassword,
+      name,
+      username,
+      newPassword
+    ],
     builder: (sheetContext) => SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
@@ -508,7 +519,8 @@ Future<void> _showCredentialEditor(
                   helperText:
                       'Kosongkan bila hanya mengubah nama atau username.',
                 ),
-                validator: (value) => value != null && value.isNotEmpty &&
+                validator: (value) => value != null &&
+                        value.isNotEmpty &&
                         value.length < passwordMinLength
                     ? 'Password minimal $passwordMinLength karakter'
                     : null,
@@ -516,7 +528,8 @@ Future<void> _showCredentialEditor(
               const Divider(height: 36),
               TextFormField(
                 controller: managerUsername,
-                decoration: InputDecoration(labelText: 'Username $managerLabel'),
+                decoration:
+                    InputDecoration(labelText: 'Username $managerLabel'),
                 validator: (value) =>
                     Validators.required(value, field: 'Username $managerLabel'),
               ),
@@ -524,7 +537,8 @@ Future<void> _showCredentialEditor(
               TextFormField(
                 controller: managerPassword,
                 obscureText: true,
-                decoration: InputDecoration(labelText: 'Password $managerLabel'),
+                decoration:
+                    InputDecoration(labelText: 'Password $managerLabel'),
                 validator: (value) =>
                     Validators.required(value, field: 'Password $managerLabel'),
               ),
@@ -552,21 +566,18 @@ Future<void> _showCredentialEditor(
       ),
     ),
   );
-  managerUsername.dispose();
-  managerPassword.dispose();
-  name.dispose();
-  username.dispose();
-  newPassword.dispose();
-  if (result == null || !context.mounted) return;
+  if (result == null || !isCurrentPage(context)) return;
 
-  final saved = await ref.read(managedUsersProvider.notifier).updateCredentials(
-        user: user,
-        managerUsername: result.managerUsername,
-        managerPassword: result.managerPassword,
-        name: result.name,
-        username: result.username,
-        password: result.password,
-      );
+  final saved = await withNavigationWriteLock(
+      ref,
+      () => ref.read(managedUsersProvider.notifier).updateCredentials(
+            user: user,
+            managerUsername: result.managerUsername,
+            managerPassword: result.managerPassword,
+            name: result.name,
+            username: result.username,
+            password: result.password,
+          ));
   if (!context.mounted) return;
   saved.when(
     success: (_) => ScaffoldMessenger.of(context).showSnackBar(

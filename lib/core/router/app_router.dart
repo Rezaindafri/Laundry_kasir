@@ -48,8 +48,12 @@ class AppTabTransition {
   const AppTabTransition({required this.movesLeft});
 }
 
+/// Authenticated-route lifecycle: pause the scanner while another page covers it.
+final appRouteObserver = RouteObserver<ModalRoute<dynamic>>();
+
 Page<void> _tabPage(GoRouterState state, Widget child) {
-  final transition = state.extra as AppTabTransition?;
+  final transition =
+      state.extra is AppTabTransition ? state.extra as AppTabTransition : null;
   if (transition == null) {
     return NoTransitionPage<void>(key: state.pageKey, child: child);
   }
@@ -134,6 +138,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LoginScreen(),
       ),
       ShellRoute(
+        observers: [appRouteObserver],
         builder: (context, state, child) => PersistentTabShell(child: child),
         routes: [
           GoRoute(
@@ -233,71 +238,71 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               );
             },
           ),
+          GoRoute(
+            path: AppRoutes.qrScanner,
+            redirect: (context, state) {
+              final role = ref.read(sessionProvider).valueOrNull?.role;
+              return role == UserRole.owner || role == UserRole.kasir
+                  ? null
+                  : AppRoutes.dashboard;
+            },
+            builder: (context, state) => const QrScannerScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.collections,
+            redirect: (context, state) {
+              final role = ref.read(sessionProvider).valueOrNull?.role;
+              return role == UserRole.owner || role == UserRole.kasir
+                  ? null
+                  : AppRoutes.dashboard;
+            },
+            builder: (context, state) => const TransactionsScreen(
+              isCollectionMode: true,
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.collectionSettlement,
+            redirect: (context, state) {
+              final role = ref.read(sessionProvider).valueOrNull?.role;
+              return role == UserRole.owner || role == UserRole.kasir
+                  ? null
+                  : AppRoutes.dashboard;
+            },
+            builder: (context, state) {
+              final transaction = state.extra;
+              if (transaction is TransactionEntity) {
+                return CollectionSettlementScreen(transaction: transaction);
+              }
+              return const TransactionsScreen(isCollectionMode: true);
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.services,
+            redirect: (context, state) {
+              final role = ref.read(sessionProvider).valueOrNull?.role;
+              return role?.canManageServicePrice == true
+                  ? null
+                  : AppRoutes.dashboard;
+            },
+            builder: (context, state) => const LaundryServicesScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.auditLogs,
+            redirect: (context, state) =>
+                ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
+                    ? null
+                    : AppRoutes.dashboard,
+            builder: (context, state) => const AuditLogsScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.expenses,
+            redirect: (context, state) =>
+                ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
+                    ? null
+                    : AppRoutes.dashboard,
+            builder: (context, state) => const ExpensesScreen(),
+          ),
         ],
-      ),
-      GoRoute(
-        path: AppRoutes.qrScanner,
-        redirect: (context, state) {
-          final role = ref.read(sessionProvider).valueOrNull?.role;
-          return role == UserRole.owner || role == UserRole.kasir
-              ? null
-              : AppRoutes.dashboard;
-        },
-        builder: (context, state) => const QrScannerScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.collections,
-        redirect: (context, state) {
-          final role = ref.read(sessionProvider).valueOrNull?.role;
-          return role == UserRole.owner || role == UserRole.kasir
-              ? null
-              : AppRoutes.dashboard;
-        },
-        builder: (context, state) => const TransactionsScreen(
-          isCollectionMode: true,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.collectionSettlement,
-        redirect: (context, state) {
-          final role = ref.read(sessionProvider).valueOrNull?.role;
-          return role == UserRole.owner || role == UserRole.kasir
-              ? null
-              : AppRoutes.dashboard;
-        },
-        builder: (context, state) {
-          final transaction = state.extra;
-          if (transaction is TransactionEntity) {
-            return CollectionSettlementScreen(transaction: transaction);
-          }
-          return const TransactionsScreen(isCollectionMode: true);
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.services,
-        redirect: (context, state) {
-          final role = ref.read(sessionProvider).valueOrNull?.role;
-          return role?.canManageServicePrice == true
-              ? null
-              : AppRoutes.dashboard;
-        },
-        builder: (context, state) => const LaundryServicesScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.auditLogs,
-        redirect: (context, state) =>
-            ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
-                ? null
-                : AppRoutes.dashboard,
-        builder: (context, state) => const AuditLogsScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.expenses,
-        redirect: (context, state) =>
-            ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
-                ? null
-                : AppRoutes.dashboard,
-        builder: (context, state) => const ExpensesScreen(),
       ),
     ],
   );

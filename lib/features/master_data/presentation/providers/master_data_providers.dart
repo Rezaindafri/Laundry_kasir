@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
+import '../../../../core/utils/name_sort.dart';
 import '../../../../core/utils/result.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/customer_remote_datasource.dart';
@@ -35,16 +36,11 @@ class CustomersNotifier extends AsyncNotifier<List<CustomerEntity>> {
     ref.watch(currentSessionUserIdProvider);
     return _load();
   }
+
   Future<List<CustomerEntity>> _load() async {
     final result = await ref.read(masterDataRepositoryProvider).getCustomers();
     return result.when(
-      success: (data) {
-        final customers = [...data]
-          ..sort((first, second) => first.name.toLowerCase().compareTo(
-                second.name.toLowerCase(),
-              ));
-        return customers;
-      },
+      success: (data) => sortedByName(data, (item) => item.name),
       error: (failure) => throw failure,
     );
   }
@@ -60,9 +56,7 @@ class CustomersNotifier extends AsyncNotifier<List<CustomerEntity>> {
             items.add(item);
           else
             items[index] = item;
-          items.sort((first, second) =>
-              first.name.toLowerCase().compareTo(second.name.toLowerCase()));
-          state = AsyncData(items);
+          state = AsyncData(sortedByName(items, (item) => item.name));
         },
         error: (_) {});
     return result;
@@ -95,10 +89,12 @@ class LaundryServicesNotifier
     ref.watch(currentSessionUserIdProvider);
     return _load();
   }
+
   Future<List<LaundryServiceEntity>> _load() async {
     final result = await ref.read(masterDataRepositoryProvider).getServices();
     return result.when(
-        success: (data) => data, error: (failure) => throw failure);
+        success: (data) => sortedByName(data, (item) => item.name),
+        error: (failure) => throw failure);
   }
 
   Future<Result<LaundryServiceEntity>> save(
@@ -113,7 +109,7 @@ class LaundryServicesNotifier
             items.add(item);
           else
             items[index] = item;
-          state = AsyncData(items);
+          state = AsyncData(sortedByName(items, (item) => item.name));
         },
         error: (_) {});
     return result;

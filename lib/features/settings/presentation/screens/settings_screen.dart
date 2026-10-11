@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/widgets/navigation_write_guard.dart';
+import '../../../../core/widgets/safe_modal_sheet.dart';
 import '../../../auth/data/models/user_model.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
@@ -22,7 +24,8 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(sessionProvider).valueOrNull;
     if (user?.role.apiValue == 'super_owner') {
-      return Scaffold(
+      return NavigationWriteGuard(
+          child: Scaffold(
         drawer: AppNavigationDrawer(user: user!),
         appBar: AppBar(
           title: const Text('Pengaturan'),
@@ -44,11 +47,12 @@ class SettingsScreen extends ConsumerWidget {
             _SuperOwnerSettingsSection(),
           ],
         ),
-      );
+      ));
     }
 
     final settings = ref.watch(laundrySettingsProvider);
-    return Scaffold(
+    return NavigationWriteGuard(
+        child: Scaffold(
       drawer: user == null ? null : AppNavigationDrawer(user: user),
       appBar: AppBar(
         title: const Text('Pengaturan'),
@@ -68,7 +72,7 @@ class SettingsScreen extends ConsumerWidget {
             Center(child: Text('Pengaturan gagal dimuat: $error')),
         data: (value) => _SettingsForm(value: value),
       ),
-    );
+    ));
   }
 
   void _confirmLogout(BuildContext context, WidgetRef ref) {
@@ -196,11 +200,14 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
             false;
     try {
       if (canManageBusiness) {
-        await ref.read(laundrySettingsProvider.notifier).save(value);
+        await withNavigationWriteLock(
+            ref, () => ref.read(laundrySettingsProvider.notifier).save(value));
       } else {
-        await ref
-            .read(laundrySettingsProvider.notifier)
-            .saveDeviceSettings(value);
+        await withNavigationWriteLock(
+            ref,
+            () => ref
+                .read(laundrySettingsProvider.notifier)
+                .saveDeviceSettings(value));
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -374,19 +381,16 @@ class _ProfileSection extends ConsumerWidget {
     );
   }
 
-  Future<void> _editProfile(
-    BuildContext context,
-    WidgetRef ref,
-    UserModel user,
-    {required bool canChangeUsername}
-  ) async {
+  Future<void> _editProfile(BuildContext context, WidgetRef ref, UserModel user,
+      {required bool canChangeUsername}) async {
     final name = TextEditingController(text: user.name);
     final username = TextEditingController(text: user.username);
     final formKey = GlobalKey<FormState>();
-    final result = await showModalBottomSheet<_ProfileInput>(
+    final result = await showSafeModalBottomSheet<_ProfileInput>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => Padding(
+      controllers: [name, username],
+      builder: (sheetContext) => SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           24,
           24,
@@ -437,19 +441,19 @@ class _ProfileSection extends ConsumerWidget {
         ),
       ),
     );
-    name.dispose();
-    username.dispose();
-    if (result == null || !context.mounted) return;
+    if (result == null || !isCurrentPage(context)) return;
 
     try {
-      final updated = await ref
-          .read(profileRemoteDataSourceProvider)
-          .updateProfile(name: result.name, username: result.username);
-      await ref.read(authLocalDataSourceProvider).updateSavedUser(updated);
-      await ref
-          .read(sessionProvider.notifier)
-          .replaceCurrentUser(updated.toEntity());
-      ref.invalidate(currentProfileProvider);
+      await withNavigationWriteLock(ref, () async {
+        final updated = await ref
+            .read(profileRemoteDataSourceProvider)
+            .updateProfile(name: result.name, username: result.username);
+        await ref.read(authLocalDataSourceProvider).updateSavedUser(updated);
+        await ref
+            .read(sessionProvider.notifier)
+            .replaceCurrentUser(updated.toEntity());
+        ref.invalidate(currentProfileProvider);
+      });
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profil berhasil diperbarui.')),
@@ -472,10 +476,11 @@ class _ProfileSection extends ConsumerWidget {
     final password = TextEditingController();
     final confirmation = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    final result = await showModalBottomSheet<_PasswordInput>(
+    final result = await showSafeModalBottomSheet<_PasswordInput>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => Padding(
+      controllers: [currentPassword, password, confirmation],
+      builder: (sheetContext) => SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           24,
           24,
@@ -506,8 +511,8 @@ class _ProfileSection extends ConsumerWidget {
                 decoration: const InputDecoration(labelText: 'Password baru'),
                 validator: (value) =>
                     value == null || value.length < passwordMinLength
-                    ? 'Password minimal $passwordMinLength karakter'
-                    : null,
+                        ? 'Password minimal $passwordMinLength karakter'
+                        : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -535,16 +540,15 @@ class _ProfileSection extends ConsumerWidget {
         ),
       ),
     );
-    currentPassword.dispose();
-    password.dispose();
-    confirmation.dispose();
-    if (result == null || !context.mounted) return;
+    if (result == null || !isCurrentPage(context)) return;
 
     try {
-      await ref.read(profileRemoteDataSourceProvider).updatePassword(
-            currentPassword: result.currentPassword,
-            password: result.password,
-          );
+      await withNavigationWriteLock(
+          ref,
+          () => ref.read(profileRemoteDataSourceProvider).updatePassword(
+                currentPassword: result.currentPassword,
+                password: result.password,
+              ));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Password berhasil diperbarui.')),
@@ -624,7 +628,10 @@ class _BackupRestoreSectionState extends ConsumerState<_BackupRestoreSection> {
       );
       if (confirmed != true || !mounted) return;
       setState(() => _busy = true);
-      await ref.read(laundrySettingsProvider.notifier).restoreBackup(backup);
+      await withNavigationWriteLock(
+          ref,
+          () =>
+              ref.read(laundrySettingsProvider.notifier).restoreBackup(backup));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Konfigurasi berhasil dipulihkan.')),
@@ -721,7 +728,8 @@ class _SuperOwnerSettingsSection extends ConsumerWidget {
                 'Password akun baru dan perubahan password minimal ${value.passwordMinLength} karakter.',
               ),
               trailing: TextButton(
-                onPressed: () => _editPasswordPolicy(context, ref, value.passwordMinLength),
+                onPressed: () =>
+                    _editPasswordPolicy(context, ref, value.passwordMinLength),
                 child: const Text('Ubah'),
               ),
             ),
@@ -760,7 +768,8 @@ class _SuperOwnerSettingsSection extends ConsumerWidget {
                         .map(
                           (change) => ListTile(
                             leading: const Icon(Icons.manage_accounts_outlined),
-                            title: Text('${change.label}: ${change.subjectName}'),
+                            title:
+                                Text('${change.label}: ${change.subjectName}'),
                             subtitle: Text(
                               '${change.actorName}${change.actorUsername == null ? '' : ' (@${change.actorUsername})'}'
                               '${change.createdAt == null ? '' : ' • ${DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(change.createdAt!.toLocal())}'}',
@@ -782,10 +791,11 @@ class _SuperOwnerSettingsSection extends ConsumerWidget {
   ) async {
     final controller = TextEditingController(text: currentValue.toString());
     final formKey = GlobalKey<FormState>();
-    final result = await showModalBottomSheet<int>(
+    final result = await showSafeModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => Padding(
+      controllers: [controller],
+      builder: (sheetContext) => SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           24,
           24,
@@ -832,12 +842,13 @@ class _SuperOwnerSettingsSection extends ConsumerWidget {
         ),
       ),
     );
-    controller.dispose();
-    if (result == null || !context.mounted) return;
+    if (result == null || !isCurrentPage(context)) return;
     try {
-      await ref
-          .read(profileRemoteDataSourceProvider)
-          .updatePasswordMinLength(result);
+      await withNavigationWriteLock(
+          ref,
+          () => ref
+              .read(profileRemoteDataSourceProvider)
+              .updatePasswordMinLength(result));
       ref.invalidate(superOwnerSettingsProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

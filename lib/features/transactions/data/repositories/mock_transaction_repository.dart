@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/utils/result.dart';
+import '../../../../core/error/failures.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../../domain/entities/transaction_page_entity.dart';
 import '../../domain/repositories/transaction_repository.dart';
@@ -22,7 +23,8 @@ class MockTransactionRepository implements TransactionRepository {
     final page = (query['page'] as num?)?.toInt() ?? 1;
     final perPage = (query['per_page'] as num?)?.toInt() ?? 20;
     final start = (page - 1) * perPage;
-    final end = start + perPage > _items.length ? _items.length : start + perPage;
+    final end =
+        start + perPage > _items.length ? _items.length : start + perPage;
     return Success(TransactionPageEntity(
       items: start >= _items.length ? const [] : _items.sublist(start, end),
       currentPage: page,
@@ -33,7 +35,8 @@ class MockTransactionRepository implements TransactionRepository {
 
   @override
   Future<Result<TransactionEntity>> create(
-      TransactionEntity transaction,) async {
+    TransactionEntity transaction,
+  ) async {
     final item = transaction.id.isEmpty
         ? TransactionEntity(
             id: _uuid.v4(),
@@ -54,6 +57,8 @@ class MockTransactionRepository implements TransactionRepository {
             createdAt: transaction.createdAt,
             estimatedFinishAt: transaction.estimatedFinishAt,
             notes: transaction.notes,
+            details: transaction.details,
+            hasEstimatedFinish: transaction.hasEstimatedFinish,
           )
         : transaction;
     _items.insert(0, item);
@@ -62,10 +67,22 @@ class MockTransactionRepository implements TransactionRepository {
 
   @override
   Future<Result<TransactionEntity>> update(
-      TransactionEntity transaction,) async {
+    TransactionEntity transaction,
+  ) async {
     final index = _items.indexWhere((item) => item.id == transaction.id);
     if (index >= 0) _items[index] = transaction;
     return Success(transaction);
+  }
+
+  @override
+  Future<Result<TransactionEntity>> pay(
+      {required TransactionEntity transaction,
+      required int amount,
+      required PaymentMethod method,
+      String? note,
+      required String requestId}) async {
+    return const Error(
+        ServerFailure('Pembayaran bertahap memerlukan backend Laravel aktif.'));
   }
 
   @override
@@ -73,7 +90,14 @@ class MockTransactionRepository implements TransactionRepository {
     required TransactionEntity transaction,
     required bool settlePayment,
     Uint8List? proofImage,
+    List<String>? detailIds,
+    int? paymentAmount,
+    String? paymentNote,
   }) async {
+    if (detailIds != null || paymentAmount != null) {
+      return const Error(ServerFailure(
+          'Pengambilan per layanan memerlukan backend Laravel aktif.'));
+    }
     final collected = transaction.copyWith(
       laundryStatus: LaundryStatus.collected,
       paymentStatus:

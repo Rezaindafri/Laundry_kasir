@@ -63,6 +63,8 @@ class TransactionEntity extends Equatable {
   final DateTime estimatedFinishAt;
   final String? notes;
   final bool hasProofImage;
+  final bool hasEstimatedFinish;
+  final List<TransactionLineEntity> details;
 
   const TransactionEntity({
     required this.id,
@@ -85,9 +87,46 @@ class TransactionEntity extends Equatable {
     required this.estimatedFinishAt,
     this.notes,
     this.hasProofImage = false,
+    this.hasEstimatedFinish = true,
+    this.details = const [],
   });
 
   int get remainingPayment => total - paidAmount;
+
+  List<TransactionLineEntity> get serviceLines => details.isNotEmpty
+      ? details
+      : [
+          TransactionLineEntity(
+              id: '',
+              serviceId: serviceId ?? '',
+              name: serviceName,
+              quantity: quantity,
+              unit: quantityUnit,
+              unitPrice: unitPrice,
+              subtotal: total,
+              expressFee: expressFee,
+              estimatedFinishAt: hasEstimatedFinish ? estimatedFinishAt : null,
+              status: laundryStatus,
+              hasProofImage: hasProofImage),
+        ];
+  String get serviceSummary =>
+      serviceLines.map((line) => line.name).join(' + ');
+  bool get hasReadyItems => serviceLines.any((line) => line.isReady);
+  bool get isProcessing =>
+      serviceLines.any((line) => !line.isReady && !line.isCollected);
+  int minimumPaymentFor(Iterable<TransactionLineEntity> selected) {
+    final chosen = selected.toList();
+    final remaining = serviceLines.where((line) => !line.isCollected).length;
+    final required = chosen.length == remaining
+        ? total
+        : serviceLines
+                .where((line) => line.isCollected)
+                .fold<int>(0, (sum, line) => sum + line.subtotal) +
+            chosen.fold<int>(0, (sum, line) => sum + line.subtotal);
+    return (required - paidAmount)
+        .clamp(0, remainingPayment.clamp(0, total))
+        .toInt();
+  }
 
   LaundryStatus resolveLaundryStatusAt(DateTime currentTime) {
     return laundryStatus;
@@ -122,6 +161,8 @@ class TransactionEntity extends Equatable {
         estimatedFinishAt: estimatedFinishAt,
         notes: notes ?? this.notes,
         hasProofImage: hasProofImage ?? this.hasProofImage,
+        hasEstimatedFinish: hasEstimatedFinish,
+        details: details,
       );
 
   @override
@@ -134,5 +175,59 @@ class TransactionEntity extends Equatable {
         paymentStatus,
         laundryStatus,
         hasProofImage,
+        hasEstimatedFinish,
+        details,
+      ];
+}
+
+class TransactionLineEntity extends Equatable {
+  final String id;
+  final String serviceId;
+  final String name;
+  final double quantity;
+  final String unit;
+  final int unitPrice;
+  final int subtotal;
+  final int expressFee;
+  final DateTime? estimatedFinishAt;
+  final LaundryStatus status;
+  final DateTime? collectedAt;
+  final bool hasProofImage;
+  final bool hasKnownTiming;
+
+  const TransactionLineEntity(
+      {required this.id,
+      required this.serviceId,
+      required this.name,
+      required this.quantity,
+      required this.unit,
+      required this.unitPrice,
+      required this.subtotal,
+      this.expressFee = 0,
+      this.estimatedFinishAt,
+      this.status = LaundryStatus.received,
+      this.collectedAt,
+      this.hasProofImage = false,
+      this.hasKnownTiming = true});
+
+  bool get isCollected => status == LaundryStatus.collected;
+  bool get isReady =>
+      status == LaundryStatus.completed || status == LaundryStatus.late;
+
+  @override
+  List<Object?> get props => [
+        id,
+        serviceId,
+        name,
+        quantity,
+        unit,
+        unitPrice,
+        subtotal,
+        expressFee,
+        estimatedFinishAt,
+        status,
+        collectedAt,
+        hasProofImage,
+        hasKnownTiming
       ];
 }

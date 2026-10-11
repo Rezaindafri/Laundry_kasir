@@ -177,10 +177,8 @@ class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
                             ),
                           ),
                           Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                            child:
-                                Text('${data.currentPage}/${data.lastPage}'),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text('${data.currentPage}/${data.lastPage}'),
                           ),
                           Expanded(
                             child: FilledButton(
@@ -292,6 +290,7 @@ List<_AuditChange> _changes(
     'laundry_status': 'Status laundry',
     'order_status': 'Status pesanan',
     'estimated_finish_at': 'Estimasi selesai',
+    'details': 'Layanan dan pengambilan',
     'name': 'Nama',
     'username': 'Username',
     'email': 'Email',
@@ -308,11 +307,23 @@ List<_AuditChange> _changes(
       .where(labels.containsKey)
       .map((key) => _AuditChange(
             labels[key]!,
-            before.containsKey(key) ? before[key]?.toString() : null,
-            after.containsKey(key) ? after[key]?.toString() : null,
+            before.containsKey(key) ? _auditDisplay(before[key]) : null,
+            after.containsKey(key) ? _auditDisplay(after[key]) : null,
           ))
       .where((change) => change.before != change.after)
       .toList();
+}
+
+String? _auditDisplay(dynamic value) {
+  if (value is! List) return value?.toString();
+  return value
+      .whereType<Map>()
+      .map((line) =>
+          '${line['service_name'] ?? 'Layanan'} (#${line['id']}): ${line['qty']} ${line['service_unit'] ?? ''}; '
+          'harga ${line['price']}; subtotal ${line['subtotal']}; '
+          '${line['is_collected'] == true ? 'Sudah diambil' : 'Belum diambil'}'
+          '${line['collected_at'] == null ? '' : ' · ${_dateLabel(DateTime.tryParse(line['collected_at'].toString()))}'}')
+      .join('\n');
 }
 
 Map<String, dynamic> _object(dynamic value) =>
@@ -328,6 +339,7 @@ String _actionLabel(String action) => switch (action) {
       'transaction.status_updated' => 'Status laundry diperbarui',
       'transaction.payment_recorded' => 'Pembayaran dicatat',
       'transaction.collected' => 'Laundry diambil',
+      'transaction.partially_collected' => 'Sebagian layanan diambil',
       'transaction.proof_uploaded_and_collected' =>
         'Bukti pengambilan diunggah',
       'transaction.deleted' => 'Transaksi dihapus',

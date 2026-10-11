@@ -23,8 +23,7 @@ class ServiceModel {
         unit: json['unit']?.toString() ?? '',
         estimationHours:
             int.tryParse(json['estimation_hours']?.toString() ?? '') ?? 0,
-        estimationUnit:
-            json['estimation_unit']?.toString() ?? 'hours',
+        estimationUnit: json['estimation_unit']?.toString() ?? 'hours',
       );
 
   LaundryServiceEntity toEntity() => LaundryServiceEntity(
@@ -41,7 +40,6 @@ class ServiceModel {
         'name': entity.name,
         'price': entity.price,
         'unit': entity.unit,
-        'estimation_hours': entity.estimatedHours,
-        'estimation_unit': entity.estimateUnit.name,
+        'estimation_hours': entity.estimatedDurationInHours,
       };
 }

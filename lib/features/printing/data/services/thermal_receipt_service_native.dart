@@ -16,6 +16,7 @@ class ThermalReceiptService {
   static final _dateTime = DateFormat('dd/MM/yy HH:mm', 'id_ID');
 
   static String buildEstimateSummary(TransactionEntity transaction) {
+    if (!transaction.hasEstimatedFinish) return 'tanpa estimasi';
     final diff =
         transaction.estimatedFinishAt.difference(transaction.createdAt);
     final totalHours = diff.inHours;
@@ -94,8 +95,10 @@ class ThermalReceiptService {
       generator.row([
         PosColumn(text: 'Estimasi', width: 6),
         PosColumn(
-          text: _dateTime
-              .format(BusinessTime.wallTime(transaction.estimatedFinishAt)),
+          text: transaction.hasEstimatedFinish
+              ? _dateTime
+                  .format(BusinessTime.wallTime(transaction.estimatedFinishAt))
+              : 'Tanpa estimasi',
           width: 6,
           styles: const PosStyles(align: PosAlign.right),
         ),
@@ -113,36 +116,27 @@ class ThermalReceiptService {
     );
     bytes.addAll(generator.text('Waktu pada bon: WIB'));
     bytes.addAll(generator.hr());
-    bytes.addAll(
-      generator.row([
-        PosColumn(text: 'Layanan', width: 5),
+    for (final line in transaction.serviceLines) {
+      bytes.addAll(
+          generator.text(line.name, styles: const PosStyles(bold: true)));
+      bytes.addAll(generator.row([
+        PosColumn(text: '${line.quantity} ${line.unit}', width: 5),
         PosColumn(
-          text: transaction.serviceName,
-          width: 7,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]),
-    );
-    bytes.addAll(
-      generator.row([
-        PosColumn(text: 'Jumlah', width: 5),
-        PosColumn(
-          text: '${transaction.quantity} ${transaction.quantityUnit}',
-          width: 7,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]),
-    );
-    bytes.addAll(
-      generator.row([
-        PosColumn(text: 'Estimasi', width: 5),
-        PosColumn(
-          text: buildEstimateSummary(transaction),
-          width: 7,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]),
-    );
+            text: _currency.format(line.subtotal),
+            width: 7,
+            styles: const PosStyles(align: PosAlign.right)),
+      ]));
+      bytes.addAll(generator.text(
+          line.estimatedFinishAt == null
+              ? (line.hasKnownTiming
+                  ? 'Tanpa estimasi'
+                  : 'Estimasi tidak tersedia')
+              : 'Est. ${_dateTime.format(BusinessTime.wallTime(line.estimatedFinishAt!))} WIB',
+          styles: const PosStyles(fontType: PosFontType.fontB)));
+      if (line.isCollected)
+        bytes.addAll(generator.text('Sudah diambil',
+            styles: const PosStyles(fontType: PosFontType.fontB)));
+    }
     bytes.addAll(
       generator.row([
         PosColumn(text: 'Total', width: 5, styles: const PosStyles(bold: true)),
@@ -163,6 +157,21 @@ class ThermalReceiptService {
         ),
       ]),
     );
+    bytes.addAll(generator.row([
+      PosColumn(text: 'Dibayar', width: 5),
+      PosColumn(
+          text: _currency.format(transaction.paidAmount),
+          width: 7,
+          styles: const PosStyles(align: PosAlign.right)),
+    ]));
+    bytes.addAll(generator.row([
+      PosColumn(text: 'Sisa', width: 5),
+      PosColumn(
+          text: _currency
+              .format(transaction.remainingPayment.clamp(0, transaction.total)),
+          width: 7,
+          styles: const PosStyles(align: PosAlign.right)),
+    ]));
     bytes.addAll(generator.hr());
     bytes.addAll(
       generator.text(

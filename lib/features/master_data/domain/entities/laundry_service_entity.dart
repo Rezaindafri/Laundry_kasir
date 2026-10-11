@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 enum PricingType { perKg, perItem }
+
 enum EstimateDurationUnit { hours, days }
 
 class LaundryServiceEntity extends Equatable {
@@ -25,10 +26,14 @@ class LaundryServiceEntity extends Equatable {
   PricingType get pricingType => unit.trim().toLowerCase() == 'kg'
       ? PricingType.perKg
       : PricingType.perItem;
-  int get estimatedDurationInHours =>
-      estimateUnit == EstimateDurationUnit.days ? estimatedHours * 24 : estimatedHours;
-  String get estimatedDurationLabel =>
-      estimateUnit == EstimateDurationUnit.days ? '$estimatedHours hari' : '$estimatedHours jam';
+  int get estimatedDurationInHours => estimateUnit == EstimateDurationUnit.days
+      ? estimatedHours * 24
+      : estimatedHours;
+  String get estimatedDurationLabel => estimatedHours == 0
+      ? 'Tanpa estimasi'
+      : estimateUnit == EstimateDurationUnit.days
+          ? '$estimatedHours hari'
+          : '$estimatedHours jam';
 
   LaundryServiceEntity copyWith(
           {String? name,
@@ -47,5 +52,6 @@ class LaundryServiceEntity extends Equatable {
           isActive: isActive ?? this.isActive);
 
   @override
-  List<Object?> get props => [id, name, price, unit, estimatedHours, estimateUnit, isActive];
+  List<Object?> get props =>
+      [id, name, price, unit, estimatedHours, estimateUnit, isActive];
 }

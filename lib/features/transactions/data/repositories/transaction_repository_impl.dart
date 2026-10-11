@@ -1,4 +1,4 @@
-﻿import '../../../../core/error/exceptions.dart';
+import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/result.dart';
 import '../../domain/entities/transaction_entity.dart';
@@ -42,10 +42,12 @@ class TransactionRepositoryImpl implements TransactionRepository {
   }
 
   @override
-  Future<Result<TransactionEntity>> create(TransactionEntity transaction) async {
+  Future<Result<TransactionEntity>> create(
+      TransactionEntity transaction) async {
     try {
       final model = _toModel(transaction);
-      final created = await remoteDataSource.createTransaction(transaction: model);
+      final created =
+          await remoteDataSource.createTransaction(transaction: model);
       return Success(created.toEntity());
     } on ServerException catch (error) {
       return Error(ServerFailure(error.message));
@@ -55,10 +57,34 @@ class TransactionRepositoryImpl implements TransactionRepository {
   }
 
   @override
-  Future<Result<TransactionEntity>> update(TransactionEntity transaction) async {
+  Future<Result<TransactionEntity>> update(
+      TransactionEntity transaction) async {
     try {
       final model = _toModel(transaction);
-      final updated = await remoteDataSource.updateTransaction(transaction: model);
+      final updated =
+          await remoteDataSource.updateTransaction(transaction: model);
+      return Success(updated.toEntity());
+    } on ServerException catch (error) {
+      return Error(ServerFailure(error.message));
+    } catch (_) {
+      return const Error(UnknownFailure());
+    }
+  }
+
+  @override
+  Future<Result<TransactionEntity>> pay(
+      {required TransactionEntity transaction,
+      required int amount,
+      required PaymentMethod method,
+      String? note,
+      required String requestId}) async {
+    try {
+      final updated = await remoteDataSource.recordPayment(
+          id: transaction.id,
+          amount: amount,
+          method: method.name,
+          note: note,
+          requestId: requestId);
       return Success(updated.toEntity());
     } on ServerException catch (error) {
       return Error(ServerFailure(error.message));
@@ -72,12 +98,18 @@ class TransactionRepositoryImpl implements TransactionRepository {
     required TransactionEntity transaction,
     required bool settlePayment,
     Uint8List? proofImage,
+    List<String>? detailIds,
+    int? paymentAmount,
+    String? paymentNote,
   }) async {
     try {
       final updated = await remoteDataSource.collectTransaction(
         transaction: _toModel(transaction),
         settlePayment: settlePayment,
         proofImage: proofImage,
+        detailIds: detailIds,
+        paymentAmount: paymentAmount,
+        paymentNote: paymentNote,
       );
       return Success(updated.toEntity());
     } on ServerException catch (error) {
@@ -117,16 +149,37 @@ class TransactionRepositoryImpl implements TransactionRepository {
         paymentStatus: transaction.paymentStatus.name,
         laundryStatus: transaction.laundryStatus.name,
         createdAt: transaction.createdAt,
-        estimatedFinishAt: transaction.estimatedFinishAt,
-        details: [
-          TransactionDetailModel(
-            id: 0,
-            serviceId: int.tryParse(transaction.serviceId ?? '') ?? 0,
-            serviceName: transaction.serviceName,
-            serviceUnit: transaction.quantityUnit,
-            qty: transaction.quantity,
-            price: transaction.unitPrice.toDouble(),
-          ),
-        ],
+        estimatedFinishAt: transaction.hasEstimatedFinish
+            ? transaction.estimatedFinishAt
+            : null,
+        details: transaction.details.isNotEmpty
+            ? transaction.details
+                .map((line) => TransactionDetailModel(
+                      id: int.tryParse(line.id) ?? 0,
+                      serviceId: int.tryParse(line.serviceId) ?? 0,
+                      serviceName: line.name,
+                      serviceUnit: line.unit,
+                      qty: line.quantity,
+                      price: line.unitPrice.toDouble(),
+                      subtotal: line.subtotal.toDouble(),
+                      expressFee: line.expressFee.toDouble(),
+                      estimatedFinishAt: line.estimatedFinishAt,
+                      status: line.status,
+                      collectedAt: line.collectedAt,
+                      hasProofImage: line.hasProofImage,
+                      timingConfigured: line.hasKnownTiming,
+                    ))
+                .toList()
+            : [
+                TransactionDetailModel(
+                  id: 0,
+                  serviceId: int.tryParse(transaction.serviceId ?? '') ?? 0,
+                  serviceName: transaction.serviceName,
+                  serviceUnit: transaction.quantityUnit,
+                  qty: transaction.quantity,
+                  price: transaction.unitPrice.toDouble(),
+                  expressFee: transaction.expressFee.toDouble(),
+                ),
+              ],
       );
 }

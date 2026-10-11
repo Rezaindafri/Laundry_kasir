@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/config/theme/app_text_styles.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/widgets/navigation_write_guard.dart';
 import '../../../../shared/enums/user_role.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -46,56 +47,92 @@ class _BottomNavItem {
 
 /// Kerangka tetap untuk seluruh halaman tab. Hanya konten rute di dalamnya
 /// yang dianimasikan, sehingga bottom navigation tidak ikut bergeser.
-class PersistentTabShell extends ConsumerWidget {
+class PersistentTabShell extends ConsumerStatefulWidget {
   final Widget child;
 
   const PersistentTabShell({required this.child, super.key});
 
+  @override
+  ConsumerState<PersistentTabShell> createState() => _PersistentTabShellState();
+}
+
+class _PersistentTabShellState extends ConsumerState<PersistentTabShell> {
+  bool _exitDialogOpen = false;
+
   Future<void> _handleSystemBack(BuildContext context) async {
+    if (ref.read(navigationWritesProvider) > 0) {
+      showSavingNavigationNotice(context);
+      return;
+    }
+    // Normally GoRouter pops its nested navigator first. Keep this check for
+    // Back initiated from the shell, so no previous page is discarded.
+    final router = GoRouter.of(context);
+    if (router.canPop()) {
+      router.pop();
+      return;
+    }
     if (GoRouter.of(context).state.matchedLocation != AppRoutes.dashboard) {
       context.go(AppRoutes.dashboard);
       return;
     }
 
-    final shouldExit = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Keluar aplikasi?'),
-        content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Keluar'),
-          ),
-        ],
-      ),
-    );
-    if (shouldExit == true) await SystemNavigator.pop();
+    if (_exitDialogOpen) return;
+    _exitDialogOpen = true;
+    try {
+      final shouldExit = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Keluar aplikasi?'),
+          content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Keluar'),
+            ),
+          ],
+        ),
+      );
+      if (mounted && shouldExit == true) await SystemNavigator.pop();
+    } finally {
+      _exitDialogOpen = false;
+    }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final user = ref.watch(sessionProvider).valueOrNull;
+    final busy = ref.watch(navigationWritesProvider) > 0;
+    final location = GoRouter.of(context).state.matchedLocation;
+    final hasTabBar = const {
+      AppRoutes.dashboard,
+      AppRoutes.transactions,
+      AppRoutes.customers,
+      AppRoutes.reports,
+      AppRoutes.users,
+      AppRoutes.settings,
+    }.contains(location);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _handleSystemBack(context);
       },
       child: Scaffold(
-        body: child,
-        bottomNavigationBar:
-            user == null ? null : AppBottomNavigation(user: user),
+        body: widget.child,
+        bottomNavigationBar: user == null || !hasTabBar
+            ? null
+            : AbsorbPointer(
+                absorbing: busy, child: AppBottomNavigation(user: user)),
       ),
     );
   }
 }
 
 /// Bottom navigation bersama untuk setiap halaman tab utama.
-/// QR Scanner sengaja tetap dibuka sebagai halaman sementara tanpa navigation bar.
+/// Halaman sementara tetap berada dalam shell yang sama, tanpa navigation bar.
 class AppBottomNavigation extends StatelessWidget {
   final UserEntity user;
 
@@ -153,7 +190,7 @@ class AppBottomNavigation extends StatelessWidget {
       context.push(route);
     } else {
       final targetIndex = _items.indexWhere((item) => item.route == route);
-      context.pushReplacement(
+      context.push(
         route,
         extra: AppTabTransition(
           movesLeft: targetIndex > _selectedIndex(context),
@@ -387,9 +424,10 @@ class AppNavigationDrawer extends StatelessWidget {
                               ? null
                               : () {
                                   Navigator.of(context).pop();
-                                  if (item.route == AppRoutes.dashboard) {
-                                    context.go(item.route!);
-                                  } else {
+                                  if (GoRouter.of(context)
+                                          .state
+                                          .matchedLocation !=
+                                      item.route) {
                                     context.push(item.route!);
                                   }
                                 },

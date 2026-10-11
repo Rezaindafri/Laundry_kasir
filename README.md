@@ -2,7 +2,7 @@
 
 Aplikasi kasir dan manajemen operasional berbasis Flutter dengan REST API Laravel. Branding sudah KarsaOne; paket, folder, tabel, dan istilah layanan laundry yang ada dipertahankan agar tidak memutus integrasi/data.
 
-Terakhir diverifikasi: **9–10 Oktober 2026**. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi audit menemukan bug dan celah keamanan yang masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
+Terakhir diverifikasi: backend **9–10 Oktober 2026**, Flutter **11 Oktober 2026**. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi audit menemukan bug dan celah keamanan yang masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
 
 ## Lokasi dan stack
 
@@ -30,8 +30,12 @@ Fitur yang telah terhubung ke Laravel:
 
 - Login Sanctum; pesan salah kredensial, akun nonaktif, dan kegagalan umum.
 - CRUD pelanggan/layanan sesuai role; filter dan pagination transaksi server-side.
-- Harga dan estimasi berasal dari layanan backend. DP dan pelunasan dicatat sebagai event pembayaran.
-- “Lunasi Saja” tidak mengambil barang; pengambilan melalui endpoint collection, bukti foto opsional.
+- Satu transaksi/bon dapat memuat beberapa layanan, masing-masing dengan kuantitas, harga dan estimasi sendiri dari backend. Estimasi keseluruhan memakai waktu selesai paling akhir, bukan penjumlahan durasi.
+- Form Transaksi Baru memakai satu bagian Layanan: satu kartu awal, kartu tambahan seragam lewat tombol Tambah layanan, dan Express di bawah seluruh daftar. Minimal satu layanan tetap wajib.
+- Pilihan pelanggan/layanan mengikuti pemuatan API, bukan salinan daftar kosong saat pencarian dibuka. Tersedia status memuat/gagal/kosong, coba lagi, dan tombol perbarui tanpa menutup pencarian. Nama diurutkan A–Z tanpa memperhitungkan nomor HP; kartu layanan terpilih juga A–Z dengan jumlah/berat tetap melekat pada layanan.
+- “Bayar Saja” menerima nominal tambahan, metode dan catatan tanpa mengambil barang. DP/pelunasan dicatat sebagai event pembayaran pada waktu uang diterima.
+- Pengambilan dapat bertahap per layanan yang sudah siap; DP sebelumnya diperhitungkan dan bon baru ditutup setelah semua layanan diambil. Foto tetap opsional dan tersimpan per pengambilan.
+- Estimasi layanan boleh 0/kosong untuk barang tanpa proses: langsung siap, tanpa tenggat keterlambatan. Bon cetak/gambar menampilkan estimasi masing-masing layanan.
 - Status berbasis waktu di backend dan scheduler laundry:sync-statuses.
 - Dashboard Owner/Kasir, laporan pembayaran bertanggal, ekspor CSV, filter akun termasuk Me.
 - Periode laporan memakai WIB; timestamp tetap UTC. Bukti pengambilan diakses melalui API berizin, file baru disimpan privat.
@@ -39,6 +43,7 @@ Fitur yang telah terhubung ke Laravel:
 - Audit perubahan akun, transaksi dan pengeluaran; profil/settings usaha.
 - Backup/restore **konfigurasi usaha**, bukan backup database/transaksi.
 - Bon foto/WhatsApp dan printer Bluetooth memiliki implementasi Android; pengujian perangkat nyata masih diperlukan.
+- Back menutup popup/drawer dahulu, lalu kembali satu halaman/tab. Konfirmasi keluar hanya pada Beranda tanpa riwayat sebelumnya. Form menunggu pelepasan overlay sebelum membuang controller; navigasi dikunci sementara selama penyimpanan. Scanner memakai controller kamera yang sama untuk preview/stop/galeri dan mengabaikan respons lookup setelah ditutup.
 
 “Ingat saya” dibatasi 30 hari lokal, dan token Laravel juga kedaluwarsa setelah 30 hari. Startup memverifikasi sesi melalui `/auth/me`, bukan mempercayai role akun lokal.
 
@@ -65,10 +70,10 @@ Scheduler terdaftar setiap menit di routes/console.php. Hosting perlu memanggil 
 
 | Pemeriksaan | Hasil |
 | --- | --- |
-| PHPUnit backend + regresi baru | **78 lulus**, 529 assertions, SQLite di memori |
+| PHPUnit backend + regresi baru | **87 lulus**, 621 assertions, SQLite di memori; termasuk multi-layanan, DP/pengambilan bertahap dan migrasi legacy |
 | Tes audit tambahan dengan token login asli | **13/13 lulus**, 105 assertions; sebelumnya 9 kasus gagal |
-| Flutter unit/widget | **41 lulus**, termasuk sesi, login/modal, WIB dan bukti berizin |
-| Analisis Dart, lib + test | 0 error, 12 warning lama; tidak berarti semua lint lama sudah dirapikan |
+| Flutter unit/widget | **97 lulus**, termasuk 29 regresi Back/popup/scanner/penyimpanan tertunda, pilihan saat API lambat, urutan A–Z, cache antar-sesi, pembayaran, bon, login dan WIB |
+| Analisis Dart | Pemeriksaan menyeluruh sebelumnya: 0 error, 12 warning lama. 13 file perubahan navigasi/form dan tes diperiksa 11 Oktober: 0 error/warning, 343 lint/hint informasi |
 | Composer audit lockfile (runtime dan seluruh paket) | **0 advisori**, setelah upgrade terarah tiga paket |
 
 Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan data sintetis. Belum ada pengujian end-to-end Flutter → server hosting nyata atau seluruh perangkat.
@@ -80,10 +85,15 @@ Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan da
 - Status `collected` terminal; pembayaran/pengambilan dan scheduler membaca ulang dengan row lock. Retry saldo kumulatif tidak menambah ledger/audit; request paralel MySQL belum diuji.
 - Restore atomik, guard downgrade Owner bertanggungan, pesan error generik dan escape formula CSV sudah diuji di Laravel.
 - Batas tanggal WIB/UTC serta akses bukti privat/scoped sudah diterapkan. Aturan penolakan URL bukti lama tersedia untuk Apache dan artisan serve; konfigurasi hosting/Nginx, cache dan atribusi legacy masih perlu diverifikasi.
-- Express Flutter belum cocok dengan kontrak harga backend; controller scanner belum dipasang ke widget kamera.
+- Express dikirim per layanan dan dihitung +25% di Laravel; unit hari dikonversi ke jam saat mengatur estimasi. Controller scanner sudah dipasang ke widget kamera, dengan pause/resume dan perlindungan respons setelah Back; perilaku kamera/predictive Back Android nyata belum diverifikasi.
+- Migrasi multi-layanan sudah diterapkan maju pada Laragon. Checksum kolom data lama sebelum/sesudah tetap sama; tidak reset, seed atau menghapus transaksi/pelanggan. Pengambilan sebagian berlaku untuk seluruh kuantitas satu baris layanan, belum sebagian kuantitas pada baris yang sama.
 - Laravel 13.35.0, CommonMark 2.10.3 dan Flysystem 3.36.0 sudah terpasang dari lockfile terbaru; audit advisori perlu tetap dijalankan berkala.
 
 Lihat [penyelarasan WIB, bukti dan dependensi](docs/TIMEZONE_BUKTI_DEPENDENSI_2026-10-10.md), [penanganan tahap pertama](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) dan [audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md). Tahap ini tidak menyelesaikan seluruh temuan atau membuktikan aplikasi siap produksi.
+
+Kontrak, contoh DP/pengambilan bertahap dan batasan migrasi: [multi-layanan dan pembayaran](docs/MULTI_LAYANAN_PEMBAYARAN_2026-10-10.md).
+
+Perbaikan lifecycle, urutan Back dan batas verifikasi: [navigasi Back](docs/NAVIGASI_BACK_2026-10-11.md).
 
 ## Pengujian aman
 

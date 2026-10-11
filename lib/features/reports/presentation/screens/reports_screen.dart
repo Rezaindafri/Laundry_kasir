@@ -619,7 +619,8 @@ class _PaymentList extends StatelessWidget {
                   '${items[index].invoice} • ${items[index].customerName}'),
               subtitle: Text(
                 '${_reportPaymentDateLabel(items[index].paidAt)}\n'
-                '${items[index].method.toUpperCase()} • ${items[index].recorderName ?? 'Pencatat tidak tersedia'}',
+                '${items[index].method.toUpperCase()} • ${items[index].recorderName ?? 'Pencatat tidak tersedia'}'
+                '${items[index].note == null ? '' : '\nCatatan: ${items[index].note}'}',
               ),
               isThreeLine: true,
               trailing: Text(

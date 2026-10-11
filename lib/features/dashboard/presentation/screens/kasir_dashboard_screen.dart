@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/config/theme/app_text_styles.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/widgets/safe_modal_sheet.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../transactions/domain/entities/transaction_entity.dart';
 import '../../../transactions/presentation/screens/transactions_screen.dart';
@@ -29,7 +30,7 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
   }
 
   Future<void> _showCollectionOptions() async {
-    final action = await showModalBottomSheet<_CollectionAction>(
+    final action = await showSafeModalBottomSheet<_CollectionAction>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
@@ -315,7 +316,7 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                           title: 'Pelanggan\nBaru',
                           subtitle: 'Tambah data',
                           onTap: () {
-                            context.go('${AppRoutes.customers}?create=true');
+                            context.push('${AppRoutes.customers}?create=true');
                           },
                         ),
                       ),
@@ -348,7 +349,7 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
   }
 
   void _openFilteredTransactions(TransactionListFilter filter) {
-    context.go('${AppRoutes.transactions}?filter=${filter.name}');
+    context.push('${AppRoutes.transactions}?filter=${filter.name}');
   }
 }
 
@@ -401,9 +402,7 @@ class _QuickAction extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: primary
-                        ? Colors.white
-                        : AppColors.primarySoft,
+                    color: primary ? Colors.white : AppColors.primarySoft,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: AppColors.primary, size: 26),
@@ -574,9 +573,7 @@ class _Tab extends StatelessWidget {
             margin: const EdgeInsets.all(3),
             padding: const EdgeInsets.symmetric(horizontal: 7),
             decoration: BoxDecoration(
-              color: selected
-                  ? AppColors.primarySoft
-                  : Colors.transparent,
+              color: selected ? AppColors.primarySoft : Colors.transparent,
               borderRadius: BorderRadius.circular(9),
             ),
             child: Row(
@@ -660,7 +657,7 @@ class _QueueItem extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(transaction.customerName, style: AppTextStyles.body),
                   const SizedBox(height: 2),
-                  Text('${transaction.serviceName} • ${_quantity(transaction)}',
+                  Text(transaction.serviceSummary,
                       style: AppTextStyles.bodyMuted),
                 ],
               ),
@@ -672,7 +669,10 @@ class _QueueItem extends StatelessWidget {
                     style: AppTextStyles.label
                         .copyWith(color: status.color, letterSpacing: 0)),
                 const SizedBox(height: 4),
-                Text('Est. ${_time(transaction.estimatedFinishAt)}',
+                Text(
+                    transaction.hasEstimatedFinish
+                        ? 'Est. ${_time(transaction.estimatedFinishAt)}'
+                        : 'Tanpa estimasi',
                     style: AppTextStyles.bodyMuted),
               ],
             ),
@@ -685,8 +685,6 @@ class _QueueItem extends StatelessWidget {
     );
   }
 
-  String _quantity(TransactionEntity item) =>
-      '${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity} ${item.quantityUnit}';
   String _time(DateTime value) =>
       '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 }
@@ -704,8 +702,9 @@ extension _StatusDetails on _Status {
       ? Icons.inventory_2_outlined
       : Icons.schedule_rounded;
   static _Status from(TransactionEntity item) {
+    if (item.laundryStatus == LaundryStatus.late) return _Status.late;
+    if (item.hasReadyItems && !item.isProcessing) return _Status.ready;
     final remaining = item.estimatedFinishAt.difference(DateTime.now());
-    if (remaining.isNegative) return _Status.late;
     if (remaining.inHours <= 3) return _Status.soon;
     return _Status.safe;
   }

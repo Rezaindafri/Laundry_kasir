@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/navigation_write_guard.dart';
+import '../../../../core/widgets/safe_modal_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -18,65 +20,72 @@ class LaundryServicesScreen extends ConsumerWidget {
     final services = ref.watch(laundryServicesProvider);
     final currentRole = ref.watch(sessionProvider).valueOrNull?.role;
     final canManageServices = currentRole?.canManageServicePrice ?? false;
-    return Scaffold(
-        appBar: AppBar(title: const Text('Layanan Laundry')),
-        floatingActionButton: FloatingActionButton.extended(
-            onPressed: canManageServices ? () => _showForm(context, ref) : null,
-            icon: const Icon(Icons.add),
-            label: const Text('Tambah')),
-        body: services.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) =>
-                Center(child: Text('Data layanan gagal dimuat: $error')),
-            data: (items) => RefreshIndicator(
-                onRefresh: () =>
-                    ref.read(laundryServicesProvider.notifier).refresh(),
-                child: items.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(24),
-                        children: const [
-                          SizedBox(height: 150),
-                          Icon(Icons.local_laundry_service_outlined,
-                              size: 48, color: AppColors.textSecondary),
-                          SizedBox(height: 12),
-                          Text('Data layanan laundry saat ini belum tersedia.',
-                              textAlign: TextAlign.center),
-                          SizedBox(height: 6),
-                          Text(
-                            'Tambahkan layanan agar transaksi dapat dibuat.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: AppColors.textSecondary),
-                          ),
-                        ],
-                      )
-                    : ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (_, index) {
-                      final service = items[index];
-                      return Card(
-                          child: ListTile(
-                              leading: Icon(
-                                  Icons.local_laundry_service_outlined,
-                                  color: service.isActive
-                                      ? AppColors.primary
-                                      : AppColors.textSecondary),
-                              title: Text(service.name),
-                              subtitle: Text(
-                                  '${_currency.format(service.price)} • ${service.unit} • ${service.estimatedDurationLabel}'),
-                              trailing: canManageServices
-                                  ? const Icon(Icons.edit_outlined)
-                                  : null,
-                              onTap: canManageServices
-                                  ? () =>
-                                      _showForm(context, ref, service: service)
-                                  : () => _showNoAccessMessage(context),
-                              onLongPress: canManageServices
-                                  ? () => _confirmDelete(context, ref, service)
-                                  : () => _showNoAccessMessage(context)));
-                    }))));
+    return NavigationWriteGuard(
+        child: Scaffold(
+            appBar: AppBar(title: const Text('Layanan Laundry')),
+            floatingActionButton: FloatingActionButton.extended(
+                onPressed:
+                    canManageServices ? () => _showForm(context, ref) : null,
+                icon: const Icon(Icons.add),
+                label: const Text('Tambah')),
+            body: services.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) =>
+                    Center(child: Text('Data layanan gagal dimuat: $error')),
+                data: (items) => RefreshIndicator(
+                    onRefresh: () =>
+                        ref.read(laundryServicesProvider.notifier).refresh(),
+                    child: items.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(24),
+                            children: const [
+                              SizedBox(height: 150),
+                              Icon(Icons.local_laundry_service_outlined,
+                                  size: 48, color: AppColors.textSecondary),
+                              SizedBox(height: 12),
+                              Text(
+                                  'Data layanan laundry saat ini belum tersedia.',
+                                  textAlign: TextAlign.center),
+                              SizedBox(height: 6),
+                              Text(
+                                'Tambahkan layanan agar transaksi dapat dibuat.',
+                                textAlign: TextAlign.center,
+                                style:
+                                    TextStyle(color: AppColors.textSecondary),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, index) {
+                              final service = items[index];
+                              return Card(
+                                  child: ListTile(
+                                      leading: Icon(
+                                          Icons.local_laundry_service_outlined,
+                                          color: service.isActive
+                                              ? AppColors.primary
+                                              : AppColors.textSecondary),
+                                      title: Text(service.name),
+                                      subtitle: Text(
+                                          '${_currency.format(service.price)} • ${service.unit} • ${service.estimatedDurationLabel}'),
+                                      trailing: canManageServices
+                                          ? const Icon(Icons.edit_outlined)
+                                          : null,
+                                      onTap: canManageServices
+                                          ? () => _showForm(context, ref,
+                                              service: service)
+                                          : () => _showNoAccessMessage(context),
+                                      onLongPress: canManageServices
+                                          ? () => _confirmDelete(
+                                              context, ref, service)
+                                          : () =>
+                                              _showNoAccessMessage(context)));
+                            })))));
   }
 
   void _showNoAccessMessage(BuildContext context) {
@@ -98,7 +107,7 @@ class LaundryServicesScreen extends ConsumerWidget {
     var estimateUnit = service?.estimateUnit ?? EstimateDurationUnit.hours;
 
     try {
-      final result = await showModalBottomSheet<LaundryServiceEntity>(
+      final result = await showSafeModalBottomSheet<LaundryServiceEntity>(
         context: context,
         isScrollControlled: true,
         builder: (ctx) => Padding(
@@ -152,9 +161,18 @@ class LaundryServicesScreen extends ConsumerWidget {
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'Estimasi selesai',
+                        helperText:
+                            'Kosong atau 0: tanpa proses, langsung siap diambil',
                       ),
-                      validator: (value) =>
-                          Validators.positiveNumber(value, field: 'Estimasi'),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) return null;
+                        final duration = int.tryParse(value.trim());
+                        return duration == null ||
+                                duration < 0 ||
+                                duration > 3650
+                            ? 'Isi bilangan bulat 0–3650, atau kosongkan.'
+                            : null;
+                      },
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<EstimateDurationUnit>(
@@ -198,7 +216,8 @@ class LaundryServicesScreen extends ConsumerWidget {
                                 price.text.replaceAll(',', '.'),
                               ),
                               unit: unit.text.trim(),
-                              estimatedHours: int.parse(duration.text),
+                              estimatedHours:
+                                  int.tryParse(duration.text.trim()) ?? 0,
                               estimateUnit: estimateUnit,
                               isActive: service?.isActive ?? true,
                             ),
@@ -215,10 +234,10 @@ class LaundryServicesScreen extends ConsumerWidget {
         ),
       );
 
-      if (!context.mounted) return;
+      if (!isCurrentPage(context)) return;
       if (result != null) {
-        final saved =
-            await ref.read(laundryServicesProvider.notifier).save(result);
+        final saved = await withNavigationWriteLock(
+            ref, () => ref.read(laundryServicesProvider.notifier).save(result));
         if (context.mounted) {
           _showResult(context, saved, 'Data layanan berhasil disimpan.');
         }
@@ -246,19 +265,20 @@ class LaundryServicesScreen extends ConsumerWidget {
                       onPressed: () => Navigator.pop(dialogContext, true),
                       child: const Text('Hapus'))
                 ]));
-    if (confirmed == true) {
-      final result =
-          await ref.read(laundryServicesProvider.notifier).delete(service.id);
+    if (confirmed == true && context.mounted) {
+      final result = await withNavigationWriteLock(ref,
+          () => ref.read(laundryServicesProvider.notifier).delete(service.id));
       if (context.mounted) {
         _showResult(context, result, 'Data layanan berhasil dihapus.');
       }
     }
   }
 
-  void _showResult(BuildContext context, dynamic result, String successMessage) =>
+  void _showResult(
+          BuildContext context, dynamic result, String successMessage) =>
       result.when(
-      success: (_) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(successMessage))),
-      error: (Failure failure) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(failure.message))));
+          success: (_) => ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(successMessage))),
+          error: (Failure failure) => ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(failure.message))));
 }

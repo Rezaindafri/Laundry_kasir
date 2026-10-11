@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/utils/business_time.dart';
+import '../../../../core/widgets/navigation_write_guard.dart';
+import '../../../../core/widgets/safe_modal_sheet.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
@@ -26,7 +28,8 @@ class ExpensesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(sessionProvider).valueOrNull;
     final expenses = ref.watch(expensesProvider);
-    return Scaffold(
+    return NavigationWriteGuard(
+        child: Scaffold(
       drawer: user == null ? null : AppNavigationDrawer(user: user),
       appBar: AppBar(title: const Text('Pengeluaran')),
       floatingActionButton: FloatingActionButton.extended(
@@ -82,7 +85,7 @@ class ExpensesScreen extends ConsumerWidget {
                 ),
         ),
       ),
-    );
+    ));
   }
 
   static String _errorMessage(Object error) => error is ServerException
@@ -94,16 +97,19 @@ class ExpensesScreen extends ConsumerWidget {
     WidgetRef ref, {
     ExpenseEntry? expense,
   }) async {
-    final input = await showModalBottomSheet<ExpenseInput>(
+    final input = await showSafeModalBottomSheet<ExpenseInput>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => _ExpenseFormSheet(expense: expense),
     );
-    if (input == null) return;
+    if (input == null || !isCurrentPage(context)) return;
 
     try {
-      await ref.read(expensesProvider.notifier).save(input, id: expense?.id);
+      await withNavigationWriteLock(
+          ref,
+          () =>
+              ref.read(expensesProvider.notifier).save(input, id: expense?.id));
       _invalidateFinancialViews(ref);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -150,10 +156,11 @@ class ExpensesScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (shouldDelete != true) return;
+    if (shouldDelete != true || !context.mounted) return;
 
     try {
-      await ref.read(expensesProvider.notifier).remove(expense.id);
+      await withNavigationWriteLock(
+          ref, () => ref.read(expensesProvider.notifier).remove(expense.id));
       _invalidateFinancialViews(ref);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

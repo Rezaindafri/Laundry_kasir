@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
-import '../../../../core/router/app_router.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../core/widgets/navigation_write_guard.dart';
+import '../../../../core/widgets/safe_modal_sheet.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../../../shared/enums/user_role.dart';
@@ -46,11 +46,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     if (!widget.openCreateForm || _quickCreateHandled) return;
     _quickCreateHandled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
+      if (!isCurrentPage(context)) return;
       await _showForm(context, ref);
-      if (mounted && widget.openCreateForm) {
-        context.go(AppRoutes.customers);
-      }
+      // The handled flag prevents reopening; do not clear the route's query
+      // with go(), which would erase the page the quick action came from.
     });
   }
 
@@ -61,7 +60,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final currentRole = user?.role;
     final isKasir = currentRole == UserRole.kasir;
 
-    return Scaffold(
+    return NavigationWriteGuard(
+        child: Scaffold(
       drawer: user == null ? null : AppNavigationDrawer(user: user),
       appBar: AppBar(
           automaticallyImplyLeading: true,
@@ -71,11 +71,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 icon: const Icon(Icons.search),
                 tooltip: 'Cari pelanggan',
                 onPressed: () {
-                  final list = customers.valueOrNull == null
-                      ? const <CustomerEntity>[]
-                      : customers.valueOrNull!;
                   showSearch(
-                      context: context, delegate: CustomerSearchDelegate(list));
+                      context: context, delegate: CustomerSearchDelegate());
                 })
           ]),
       floatingActionButton: FloatingActionButton.extended(
@@ -109,70 +106,77 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ],
                 )
               : ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final customer = items[index];
-              return Card(
-                  child: ListTile(
-                leading: CircleAvatar(
-                    backgroundColor: AppColors.primary.withValues(alpha: .1),
-                    foregroundColor: AppColors.primary,
-                    child: Text(customer.name.substring(0, 1).toUpperCase())),
-                title: Text(customer.name),
-                subtitle: Text(customer.phone?.isNotEmpty == true
-                    ? customer.phone!
-                    : 'Tanpa nomor HP'),
-                trailing: isKasir
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () =>
-                            _showForm(context, ref, customer: customer),
-                      ),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => CustomerDetailScreen(customer: customer),
-                  ),
-                ),
-                onLongPress: isKasir
-                    ? () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Kasir tidak memiliki hak untuk menghapus pelanggan.',
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final customer = items[index];
+                    return Card(
+                        child: ListTile(
+                      leading: CircleAvatar(
+                          backgroundColor:
+                              AppColors.primary.withValues(alpha: .1),
+                          foregroundColor: AppColors.primary,
+                          child: Text(
+                              customer.name.substring(0, 1).toUpperCase())),
+                      title: Text(customer.name),
+                      subtitle: Text(customer.phone?.isNotEmpty == true
+                          ? customer.phone!
+                          : 'Tanpa nomor HP'),
+                      trailing: isKasir
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () =>
+                                  _showForm(context, ref, customer: customer),
                             ),
-                          ),
-                        );
-                      }
-                    : () => _confirmDelete(context, ref, customer),
-              ));
-            },
-          ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              CustomerDetailScreen(customer: customer),
+                        ),
+                      ),
+                      onLongPress: isKasir
+                          ? () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Kasir tidak memiliki hak untuk menghapus pelanggan.',
+                                  ),
+                                ),
+                              );
+                            }
+                          : () => _confirmDelete(context, ref, customer),
+                    ));
+                  },
+                ),
         ),
       ),
-    );
+    ));
   }
 
   Future<void> _showForm(BuildContext context, WidgetRef ref,
       {CustomerEntity? customer}) async {
     if (_formOpen) return;
     _formOpen = true;
-    final result = await showModalBottomSheet<CustomerEntity>(
+    final result = await showSafeModalBottomSheet<CustomerEntity>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       builder: (_) => _CustomerFormSheet(customer: customer),
     );
     _formOpen = false;
-    if (!mounted || result == null) return;
+    if (!isCurrentPage(context) || result == null) return;
 
-    final saved = await ref.read(customersProvider.notifier).save(result);
-    if (saved.isSuccess) {
-      await ref.read(customersProvider.notifier).refresh();
-    }
-    if (mounted) _showResult(context, saved, 'Data pelanggan berhasil disimpan.');
+    final saved = await withNavigationWriteLock(ref, () async {
+      final saved = await ref.read(customersProvider.notifier).save(result);
+      if (saved.isSuccess) {
+        await ref.read(customersProvider.notifier).refresh();
+      }
+      return saved;
+    });
+    if (mounted)
+      _showResult(context, saved, 'Data pelanggan berhasil disimpan.');
   }
 
   Future<void> _confirmDelete(
@@ -190,21 +194,22 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       onPressed: () => Navigator.pop(dialogContext, true),
                       child: const Text('Hapus'))
                 ]));
-    if (confirmed == true) {
-      final result =
-          await ref.read(customersProvider.notifier).delete(customer.id);
+    if (confirmed == true && mounted) {
+      final result = await withNavigationWriteLock(
+          ref, () => ref.read(customersProvider.notifier).delete(customer.id));
       if (context.mounted) {
         _showResult(context, result, 'Data pelanggan berhasil dihapus.');
       }
     }
   }
 
-  void _showResult(BuildContext context, dynamic result, String successMessage) =>
+  void _showResult(
+          BuildContext context, dynamic result, String successMessage) =>
       result.when(
-      success: (_) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(successMessage))),
-      error: (Failure failure) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(failure.message))));
+          success: (_) => ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(successMessage))),
+          error: (Failure failure) => ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(failure.message))));
 }
 
 /// Owns its controllers for the entire lifetime of the bottom-sheet route.

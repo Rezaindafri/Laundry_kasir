@@ -1,6 +1,6 @@
 # Dokumentasi Proyek KarsaOne
 
-Pembaruan: **10 Oktober 2026**, berdasarkan kode Flutter/Laravel dan pengujian 9–10 Oktober. Nama file historis dipertahankan agar tautan lama tetap berlaku.
+Pembaruan: **11 Oktober 2026**, berdasarkan kode Flutter/Laravel, pengujian backend 9–10 Oktober dan Flutter 11 Oktober. Nama file historis dipertahankan agar tautan lama tetap berlaku.
 
 ## 1. Produk dan batas cakupan
 
@@ -62,6 +62,12 @@ Rute: /splash, /login, /dashboard, /customers, /services, /transactions, /collec
 
 Tab menggunakan shell persisten. Drawer mengikuti role. Logout di Settings. Super Owner mempunyai tab akun, bukan laporan operasional.
 
+Seluruh rute yang membutuhkan login berada di satu ShellRoute, untuk menghindari shell/Page key ganda ketika scanner atau halaman sementara membuka tab. Navigation bar tetap hanya tampil di tab utama. Perpindahan tab/aksi cepat memakai push agar Back mempertahankan riwayat; penutupan modal aksi cepat tidak menghapus halaman asal.
+
+Back menutup popup/drawer terlebih dahulu, kemudian kembali satu halaman/tab. Jika masuk langsung ke tab/halaman sementara tanpa riwayat, Back menuju Beranda; hanya Beranda tanpa halaman sebelumnya yang meminta konfirmasi keluar. Selama request simpan/pembayaran/pengambilan berjalan, Back memberi pesan tunggu dan perpindahan tab/editing dinonaktifkan sementara. Pengunci dilepas pada hasil sukses maupun gagal; bukan pembatalan request server.
+
+`showSafeModalBottomSheet` menunggu `ModalRoute.completed`, bukan hanya hasil pop, sebelum melepas controller lokal atau membuka sheet berikutnya. Form pelanggan utama tetap memiliki controller dalam State. Scanner berbagi controller dengan preview, berhenti saat tertutup/background/tertutup rute lain, dan mengabaikan hasil lookup setelah meninggalkan layar. Detail pengujian: [navigasi Back](docs/NAVIGASI_BACK_2026-10-11.md).
+
 Branding: logo lokal assets/brand/karsaone_logo.png, aksen biru, permukaan putih, avatar biru/teks hitam, splash animasi Flutter sekitar 2,6 detik, termasuk saat logout. Aset native launcher/splash tersedia; rendering setiap launcher/perangkat belum diuji.
 
 Login:
@@ -96,17 +102,22 @@ Layanan:
 - Kasir membaca katalog; Owner mengatur harga, unit dan estimasi.
 - Layanan terpakai tidak boleh dihapus.
 - Laravel menggunakan harga/estimasi layanan, bukan mempercayai harga/estimasi request Flutter.
+- Estimasi 0 atau kosong disimpan sebagai 0: barang tanpa proses langsung siap dan tidak otomatis terlambat. Unit hari dikonversi menjadi jam sebelum dikirim ke Laravel.
 
 Transaksi:
 
 - Query pencarian, status, pembayaran, tanggal, akun dan pagination backend.
-- Pencatatan pelanggan, layanan, kuantitas, catatan, metode dan pembayaran awal.
+- Satu transaksi/bon memuat 1–50 baris layanan, dengan kuantitas, harga, biaya Express dan estimasi per baris. Nama/unit/harga/estimasi disalin saat transaksi dibuat agar perubahan katalog tidak mengubah bon lama.
+- Form Transaksi Baru menyatukan layanan dalam satu daftar kartu. Kartu pertama langsung tersedia; Tambah layanan menambahkan kartu kosong dengan pemilihan/jumlah/estimasi yang sama. Kartu mana pun boleh dihapus jika masih ada layanan lain; Express berada setelah daftar. Nilai controller tetap diperiksa saat simpan walaupun kartunya sudah di-scroll keluar layar.
+- Daftar pilihan pelanggan dan layanan mengamati provider API selama pencarian terbuka. Hasil yang terlambat tiba langsung ditampilkan; loading, kegagalan, katalog kosong dan pencarian tanpa hasil dibedakan. Coba lagi/perbarui mengambil ulang API tanpa kehilangan kata pencarian. Urutan nama A–Z mengabaikan kapital dan spasi luar, tidak bergantung pada nomor HP. Kartu layanan terpilih ikut A–Z dengan draft/controller jumlah tetap melekat; kartu belum dipilih tetap di bagian bawah. Tidak mengubah data pelanggan/layanan atau urutan bon lama di database.
+- Estimasi transaksi adalah waktu selesai paling akhir dari layanan berestimasi, bukan jumlah durasinya. Bon, detail dan pengambilan menampilkan estimasi tiap layanan.
+- Pencatatan pelanggan, layanan, kuantitas, catatan, metode dan pembayaran awal; DP saat pembuatan memakai nominal yang benar-benar dimasukkan.
 - Invoice/QR mengidentifikasi transaksi. Transaksi baru diarahkan ke detail.
 - Update/hapus umum hanya Owner. Pembayaran melalui payment, pengambilan melalui collection.
 - Transaksi dibayar/diambil mempunyai perlindungan penghapusan.
 - Diskon, refund dan pembatalan finansial bukan alur lengkap saat ini; placeholder bukan implementasi refund.
 
-**Ketidaksesuaian Express:** Flutter menawarkan tambahan 25%, tetapi request tidak mengirim kontrak Express dan Laravel menghitung layanan biasa. Pembayaran penuh sesuai UI dapat ditolak karena melebihi total server. Fitur ini belum terintegrasi.
+Express sudah terintegrasi: request mengirim penanda Express per baris; Laravel menghitung tambahan 25% dan membulatkan nominal transaksi baru ke rupiah. Harga client tetap tidak dipercaya. Harga/nominal transaksi lama tidak ditulis ulang.
 
 ## 6. Pembayaran dan status resmi
 
@@ -115,27 +126,34 @@ laundry_status: received, washing, drying, ironing, completed, late, collected.
 
 | Istilah UI | Definisi saat ini |
 | --- | --- |
-| Diproses | received/washing/drying/ironing; estimasi masih di masa depan |
-| Selesai / siap diambil | completed; late juga tetap belum diambil |
-| Belum diambil | completed atau late, bukan collected; tidak termasuk semua transaksi baru |
-| Terlambat | Belum diambil dan waktu melewati estimasi + durasi sejak dibuat hingga estimasi |
-| Sudah diambil | collected melalui pengambilan resmi setelah siap dan pembayaran lunas |
+| Diproses | Ada baris belum diambil yang masih sebelum estimasi selesai |
+| Selesai / siap diambil | Baris completed atau late yang belum diambil; barang berestimasi 0 langsung siap |
+| Belum diambil | Ada minimal satu baris siap yang belum diambil; baris lain boleh masih diproses |
+| Terlambat | Ada baris berestimasi yang belum diambil dan melewati dua kali durasi dari waktu transaksi dibuat |
+| Sudah diambil | Semua baris sudah diambil melalui pengambilan resmi dan seluruh tagihan lunas |
 
 Durasi 2 jam: estimasi jam ke-2; late setelah jam ke-4. Perbandingan memakai >; tepat pada batas belum late. Otomatisasi estimasi adalah aturan aplikasi sekarang, bukan bukti pemeriksaan fisik pekerjaan.
+
+Status transaksi gabungan: collected jika seluruh baris diambil; late jika ada sisa baris terlambat; completed jika seluruh sisa baris siap; selain itu status proses. Satu transaksi campuran boleh masuk kartu Diproses sekaligus Belum Diambil, karena baris berbeda. Kartu menghitung jumlah transaksi, bukan jumlah baris; filter backend memakai definisi yang sama.
 
 Scheduler laundry:sync-statuses setiap menit dengan withoutOverlapping. Sebagian endpoint juga menyinkronkan kelompok saat request. Tes memakai waktu virtual; cron hosting belum diverifikasi.
 
 Pembayaran:
 
-- “Lunasi Saja” melunasi tanpa mengambil barang; bisa sebelum siap, nonaktif setelah lunas.
-- “Ambil & Lunasi” mengambil barang siap dan melunasi sisa; menjadi “Ambil” jika sudah lunas.
-- Pengambilan sebelum siap ditolak. Foto opsional.
-- File baru disimpan privat; GET `/transactions/{id}/proof` memakai autentikasi, role dan scope Owner. Bukti lama dipertahankan, URL statisnya ditolak melalui aturan server yang perlu diverifikasi pada hosting.
+- “Bayar Saja” membuka input nominal diterima, metode dan catatan opsional; bisa DP/pelunasan sebelum siap, nonaktif setelah lunas. Pembayaran tidak otomatis mengambil barang.
+- “Bayar & Ambil” memilih baris layanan siap dan mencatat nominal tambahan yang menutup nilai layanan yang diambil; menjadi “Ambil” jika sudah lunas.
+- Pengambilan sebelum siap ditolak Laravel. Berlaku untuk seluruh kuantitas baris terpilih; pengambilan sebagian kuantitas satu baris belum tersedia. Foto opsional.
+- DP sebelumnya mengurangi kebutuhan bayar. Pengambilan terakhir wajib melunasi seluruh bon; pengambilan awal dapat menyisakan DP dan baris belum diambil.
+- File baru disimpan privat; GET `/transactions/{id}/proof?detail_id=...` membaca bukti per baris dengan autentikasi, role dan scope Owner. URL statis bukti lama ditolak melalui aturan server yang perlu diverifikasi pada hosting.
 - Boolean multipart harus sesuai validator Laravel; collection dengan 0/1 diuji.
 
-POST /transactions/{id}/payment menerima **paid_amount kumulatif**, bukan nominal tambahan. Backend mencatat selisih positif sebagai TransactionPayment. Saldo 30.000 → 100.000 menghasilkan event 30.000 dan 70.000.
+POST /transactions/{id}/payment kini menerima **amount tambahan** + request_id UUID, payment_method dan payment_note opsional. Retry payload yang sama dengan UUID yang sama tidak menggandakan ledger/audit. Kontrak lama paid_amount kumulatif tetap diterima; jangan mengirim kedua jenis nominal bersamaan.
+
+Contoh: layanan A Rp30.000, B Rp50.000, DP Rp20.000. Saat A siap, bayar tambahan Rp10.000 dan ambil A: saldo pembayaran Rp30.000/DP, B tetap terbuka. Pembayaran berikutnya Rp50.000 dicatat pada tanggal pembayaran itu; ambil B tanpa membayar lagi setelah siap. Total ledger tepat Rp80.000.
 
 `collected` kini terminal pada update/status umum. Mutasi transaksi dan scheduler membaca ulang baris dengan lockForUpdate dalam DB transaction. Retry saldo kumulatif sama menjadi no-op tanpa ledger/audit tambahan; pembayaran lebih kecil ditolak. Pengambilan memeriksa saldo, bukan hanya label paid. Request paralel MySQL belum diuji; bukan idempotency-key untuk create pesanan. Bukti baru dibersihkan saat rollback tanpa menghapus bukti lama.
+
+Pengambilan bertahap mencatat waktu/pelaku/bukti per baris dan audit transaction.partially_collected atau transaction.collected dalam transaksi database yang sama. Endpoint bukti lama hanya menandai sisa baris, tanpa menimpa bukti/waktu/pelaku pengambilan sebelumnya.
 
 ## 7. Dashboard Owner, laporan dan pengeluaran
 
@@ -152,6 +170,7 @@ Laporan:
 - Default **Hari ini**, dengan periode/filter akun.
 - Nilai pesanan, pembayaran diterima, sisa tagihan, operasional dan pengeluaran.
 - Rincian waktu, transaksi, metode, nominal dan pencatat pembayaran jika tersedia.
+- Catatan pembayaran tambahan ditampilkan pada rincian dan CSV; filter/tanggal tetap berdasarkan event pembayaran, bukan jumlah baris layanan.
 - Menu ke Riwayat Perubahan yang sama; tidak ada halaman audit duplikat.
 - CSV baris pembayaran sesuai query; kolom teks dilindungi dari formula spreadsheet dan waktu pembayaran diberi penanda WIB.
 
@@ -209,6 +228,8 @@ Riwayat:
 
 Bon ESC/POS atau gambar. WhatsApp aktif jika nomor pelanggan ada. Direct-share Android menggunakan FileProvider cache receipts/, tidak exported, izin URI sementara.
 
+Kedua jenis bon menampilkan seluruh baris layanan, kuantitas/subtotal dan estimasi kecil di masing-masing layanan, pembayaran diterima/sisa tagihan, serta penanda baris yang sudah diambil. QR tetap mengidentifikasi satu transaksi.
+
 Batas:
 
 - Printer service mendukung Android; platform lain memakai stub/penolakan.
@@ -245,12 +266,12 @@ Sebagian deklarasi role master data menyebut Super Owner, tetapi OwnerScopeServi
 
 ## 11. Verifikasi dan keselamatan data
 
-Tidak menjalankan migrasi terhadap database aplikasi, reset, seed akun nyata, atau mengubah kredensial/config produksi. PHPUnit menjalankan migrasi fixture pada SQLite :memory: dengan environment testing, DB_URL kosong, cache/session array, queue sync. Upload memakai storage fake.
+Migrasi maju 2026_10_10_000006 sudah diterapkan pada Laragon setelah pemeriksaan pending dan checksum read-only sebelum/sesudah. Kolom asli transaksi/detail/pembayaran serta metadata pelanggan/layanan yang dibandingkan tetap identik. Tidak reset, menghapus data, seed akun nyata, atau mengubah kredensial/config produksi. PHPUnit menjalankan migrasi fixture pada SQLite :memory: dengan environment testing, DB_URL kosong, cache/session array, queue sync. Upload memakai storage fake.
 
-- Backend normal dan regresi: 78/78 lulus, 529 assertions.
+- Backend normal dan regresi: 87/87 lulus, 621 assertions; termasuk multi-layanan, pembayaran idempotent, pengambilan bertahap, bukti privat, isolasi Owner dan migrasi legacy.
 - Audit tambahan: 13/13 lulus, 105 assertions; sebelumnya 9 gagal.
-- Flutter: 41 lulus; sesi, notifikasi login/modal, kalender WIB, unduh byte dengan Bearer dan dialog bukti.
-- Dart: 0 error, 12 warning lama; pemeriksaan terarah file autentikasi/interceptor/tes perubahan bersih.
+- Flutter: 97 lulus pada 11 Oktober; termasuk 29 regresi lifecycle popup, Back ketiga role, drawer, scanner, respons terlambat, dan penyimpanan tertunda. Sebelas regresi pilihan pelanggan/layanan serta seluruh regresi pembayaran, bon, login dan WIB tetap lulus tanpa perangkat/API nyata.
+- Dart: pemeriksaan menyeluruh sebelumnya 0 error, 12 warning lama; 13 file navigasi/form dan tes diperiksa 11 Oktober dengan 0 error/warning serta 343 lint/hint informasi. Bukan pernyataan bahwa seluruh proyek bebas lint.
 - Composer runtime dan seluruh lockfile: 0 advisori setelah upgrade tiga paket; validasi Composer dan persyaratan platform lokal lolos.
 
 Cara testing aman di README. UI test tidak memakai API nyata; API test tidak memakai database pelanggan asli. Tes injection/upload adalah sampel negatif, bukan penetration test lengkap.
@@ -262,11 +283,13 @@ Sudah ditangani dalam kode: logout/revokasi/expiry/rate limit/sesi Flutter, term
 Yang masih perlu dilakukan:
 
 1. Verifikasi aturan file statis hosting (termasuk Nginx/CDN), serta penolakan URL bukti lama tanpa token. Kode WIB/akses privat/upgrade sudah diuji, bukan bukti hosting sudah terkonfigurasi.
-2. Express/pembulatan, controller scanner, cache settings/rollover dan atribusi riwayat legacy.
+2. Uji Back fisik/predictive Back, keyboard dan lifecycle kamera pada Android nyata; controller scanner sudah terpasang dan lolos mock. Periksa cache settings/rollover dan atribusi riwayat legacy. Uji nominal/bon multi-layanan, cetak dan WhatsApp pada perangkat nyata.
 3. Uji paralel MySQL pada database test terpisah dan E2E perangkat/staging.
 4. Tuntaskan penanganan token/history pada seluruh salinan backend dan verifikasi deployment HTTPS/docroot/env/DB permissions/firewall/cron.
 
 [Audit awal](docs/AUDIT_INTEGRASI_KEAMANAN_2026-10-10.md) dan [tahap pertama](docs/PERBAIKAN_PRIORITAS_2026-10-10.md) adalah snapshot historis. [WIB, bukti dan upgrade](docs/TIMEZONE_BUKTI_DEPENDENSI_2026-10-10.md) memuat kelanjutan terbaru dan batas deployment.
+
+[Multi-layanan dan pembayaran bertahap](docs/MULTI_LAYANAN_PEMBAYARAN_2026-10-10.md) memuat kontrak request, contoh dan kebijakan data lama.
 
 ## 13. Git dan deployment
 
