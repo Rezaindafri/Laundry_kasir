@@ -7,7 +7,8 @@ abstract class AppConstants {
 
   /// Ganti sesuai environment backend.
   /// Untuk device fisik, arahkan ke IP LAN komputer yang menjalankan Laravel.
-  static const String baseUrl = 'http://192.168.1.5/api-indafri-laundry/public/api';
+  // static const String baseUrl = 'http://192.168.1.15/api-indafri-laundry/public/api'; // ketika jalanin di local
+  static const String baseUrl = 'https://api.karsaone.my.id/api'; // pakai hostingan
 
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 15);

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/widgets/navigation_write_guard.dart';
 import '../../../../core/widgets/safe_modal_sheet.dart';
+import '../../../../core/widgets/unsaved_changes_guard.dart';
 import '../../../../core/widgets/page_visibility_refresh.dart';
 import '../../../transactions/presentation/widgets/payment_destination_picker.dart';
 import '../../domain/entities/payment_destination.dart';
@@ -18,6 +19,7 @@ class PaymentDestinationsScreen extends ConsumerWidget {
     final input = await showSafeModalBottomSheet<_DestinationInput>(
         context: context,
         isScrollControlled: true,
+        enableDrag: false,
         builder: (_) => _DestinationForm(item: item));
     if (input == null || !context.mounted) return;
     await _save(context, ref, input.fields,
@@ -146,9 +148,27 @@ class PaymentDestinationsScreen extends ConsumerWidget {
                                         value: item.isActive,
                                         onChanged: busy
                                             ? null
-                                            : (active) => _save(context, ref,
-                                                {'is_active': active ? 1 : 0},
-                                                id: item.id)),
+                                            : (active) async {
+                                                if (!active &&
+                                                    !await showActionConfirmation(
+                                                        context: context,
+                                                        title:
+                                                            'Nonaktifkan tujuan pembayaran?',
+                                                        message:
+                                                            'Tujuan ini tidak akan ditawarkan untuk pembayaran baru. Riwayat pembayaran tetap tersimpan.',
+                                                        confirmLabel:
+                                                            'Ya, nonaktifkan'))
+                                                  return;
+                                                if (!context.mounted) return;
+                                                await _save(
+                                                    context,
+                                                    ref,
+                                                    {
+                                                      'is_active':
+                                                          active ? 1 : 0
+                                                    },
+                                                    id: item.id);
+                                              }),
                                   ])))),
                     ])),
           ),
@@ -226,118 +246,137 @@ class _DestinationFormState extends State<_DestinationForm> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-      child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-              24, 24, 24, 24 + MediaQuery.viewInsetsOf(context).bottom),
-          child: Form(
-              key: _form,
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                        widget.item == null
-                            ? 'Tambah tujuan pembayaran'
-                            : 'Ubah tujuan pembayaran',
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                        initialValue: _kind,
-                        decoration: const InputDecoration(labelText: 'Jenis'),
-                        items: const [
-                          DropdownMenuItem(
-                              value: 'transfer', child: Text('Transfer bank')),
-                          DropdownMenuItem(value: 'qris', child: Text('QRIS'))
+  Widget build(BuildContext context) => UnsavedChangesGuard(
+      hasUnsavedChanges: () =>
+          _name.text != (widget.item?.name ?? '') ||
+          _bank.text != (widget.item?.bankName ?? '') ||
+          _holder.text != (widget.item?.accountHolder ?? '') ||
+          _number.text != (widget.item?.accountNumber ?? '') ||
+          _kind != (widget.item?.kind ?? 'transfer') ||
+          _image != null,
+      listenables: [_name, _bank, _holder, _number],
+      child: SafeArea(
+          child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                  24, 24, 24, 24 + MediaQuery.viewInsetsOf(context).bottom),
+              child: Form(
+                  key: _form,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                            widget.item == null
+                                ? 'Tambah tujuan pembayaran'
+                                : 'Ubah tujuan pembayaran',
+                            style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                            initialValue: _kind,
+                            decoration:
+                                const InputDecoration(labelText: 'Jenis'),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'transfer',
+                                  child: Text('Transfer bank')),
+                              DropdownMenuItem(
+                                  value: 'qris', child: Text('QRIS'))
+                            ],
+                            onChanged: widget.item == null
+                                ? (value) => setState(() => _kind = value!)
+                                : null),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                            controller: _name,
+                            maxLength: 100,
+                            decoration: const InputDecoration(
+                                labelText: 'Nama tujuan (mis. Rekening utama)'),
+                            validator: (text) => text?.trim().isNotEmpty == true
+                                ? null
+                                : 'Nama wajib diisi.'),
+                        if (_kind == 'transfer') ...[
+                          TextFormField(
+                              controller: _bank,
+                              maxLength: 80,
+                              decoration:
+                                  const InputDecoration(labelText: 'Nama bank'),
+                              validator: (text) =>
+                                  text?.trim().isNotEmpty == true
+                                      ? null
+                                      : 'Nama bank wajib diisi.'),
+                          TextFormField(
+                              controller: _holder,
+                              maxLength: 120,
+                              decoration:
+                                  const InputDecoration(labelText: 'Atas nama'),
+                              validator: (text) =>
+                                  text?.trim().isNotEmpty == true
+                                      ? null
+                                      : 'Pemilik rekening wajib diisi.'),
+                          TextFormField(
+                              controller: _number,
+                              keyboardType: TextInputType.number,
+                              maxLength: 34,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                              decoration: const InputDecoration(
+                                  labelText: 'Nomor rekening'),
+                              validator: (text) =>
+                                  RegExp(r'^\d{5,34}$').hasMatch(text ?? '')
+                                      ? null
+                                      : 'Masukkan 5–34 digit rekening.'),
+                        ] else ...[
+                          const Text(
+                              'Gunakan gambar QRIS usaha yang sudah diterbitkan penyedia pembayaran. Maksimal 2 MB dan 2048 × 2048 piksel.'),
+                          OutlinedButton.icon(
+                              onPressed: _picking ? null : _chooseImage,
+                              icon: const Icon(Icons.image_outlined),
+                              label: Text(_picking
+                                  ? 'Memilih...'
+                                  : 'Pilih gambar QRIS')),
+                          if (_image != null)
+                            Image.memory(_image!,
+                                height: 160,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Text(
+                                    'Gambar tidak dapat dibaca. Pilih berkas QRIS yang valid.')),
+                          if (_image == null &&
+                              widget.item?.hasQrisImage == true)
+                            const Text(
+                                'Gambar yang tersimpan tetap digunakan.'),
+                          if (_imageError != null)
+                            Text(_imageError!,
+                                style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.error)),
                         ],
-                        onChanged: widget.item == null
-                            ? (value) => setState(() => _kind = value!)
-                            : null),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                        controller: _name,
-                        maxLength: 100,
-                        decoration: const InputDecoration(
-                            labelText: 'Nama tujuan (mis. Rekening utama)'),
-                        validator: (text) => text?.trim().isNotEmpty == true
-                            ? null
-                            : 'Nama wajib diisi.'),
-                    if (_kind == 'transfer') ...[
-                      TextFormField(
-                          controller: _bank,
-                          maxLength: 80,
-                          decoration:
-                              const InputDecoration(labelText: 'Nama bank'),
-                          validator: (text) => text?.trim().isNotEmpty == true
-                              ? null
-                              : 'Nama bank wajib diisi.'),
-                      TextFormField(
-                          controller: _holder,
-                          maxLength: 120,
-                          decoration:
-                              const InputDecoration(labelText: 'Atas nama'),
-                          validator: (text) => text?.trim().isNotEmpty == true
-                              ? null
-                              : 'Pemilik rekening wajib diisi.'),
-                      TextFormField(
-                          controller: _number,
-                          keyboardType: TextInputType.number,
-                          maxLength: 34,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly
-                          ],
-                          decoration: const InputDecoration(
-                              labelText: 'Nomor rekening'),
-                          validator: (text) =>
-                              RegExp(r'^\d{5,34}$').hasMatch(text ?? '')
-                                  ? null
-                                  : 'Masukkan 5–34 digit rekening.'),
-                    ] else ...[
-                      const Text(
-                          'Gunakan gambar QRIS usaha yang sudah diterbitkan penyedia pembayaran. Maksimal 2 MB dan 2048 × 2048 piksel.'),
-                      OutlinedButton.icon(
-                          onPressed: _picking ? null : _chooseImage,
-                          icon: const Icon(Icons.image_outlined),
-                          label: Text(
-                              _picking ? 'Memilih...' : 'Pilih gambar QRIS')),
-                      if (_image != null)
-                        Image.memory(_image!,
-                            height: 160,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Text(
-                                'Gambar tidak dapat dibaca. Pilih berkas QRIS yang valid.')),
-                      if (_image == null && widget.item?.hasQrisImage == true)
-                        const Text('Gambar yang tersimpan tetap digunakan.'),
-                      if (_imageError != null)
-                        Text(_imageError!,
-                            style: TextStyle(
-                                color: Theme.of(context).colorScheme.error)),
-                    ],
-                    const SizedBox(height: 16),
-                    FilledButton(
-                        onPressed: _picking
-                            ? null
-                            : () {
-                                if (!_form.currentState!.validate()) return;
-                                if (_kind == 'qris' &&
-                                    _image == null &&
-                                    widget.item?.hasQrisImage != true) {
-                                  setState(() => _imageError =
-                                      'Gambar QRIS wajib dipilih.');
-                                  return;
-                                }
-                                Navigator.pop(
-                                    context,
-                                    _DestinationInput({
-                                      'kind': _kind,
-                                      'name': _name.text.trim(),
-                                      if (_kind == 'transfer') ...{
-                                        'bank_name': _bank.text.trim(),
-                                        'account_holder': _holder.text.trim(),
-                                        'account_number': _number.text
-                                      },
-                                    }, _image, _imageName));
-                              },
-                        child: const Text('Simpan tujuan')),
-                  ]))));
+                        const SizedBox(height: 16),
+                        FilledButton(
+                            onPressed: _picking
+                                ? null
+                                : () {
+                                    if (!_form.currentState!.validate()) return;
+                                    if (_kind == 'qris' &&
+                                        _image == null &&
+                                        widget.item?.hasQrisImage != true) {
+                                      setState(() => _imageError =
+                                          'Gambar QRIS wajib dipilih.');
+                                      return;
+                                    }
+                                    Navigator.pop(
+                                        context,
+                                        _DestinationInput({
+                                          'kind': _kind,
+                                          'name': _name.text.trim(),
+                                          if (_kind == 'transfer') ...{
+                                            'bank_name': _bank.text.trim(),
+                                            'account_holder':
+                                                _holder.text.trim(),
+                                            'account_number': _number.text
+                                          },
+                                        }, _image, _imageName));
+                                  },
+                            child: const Text('Simpan tujuan')),
+                      ])))));
 }

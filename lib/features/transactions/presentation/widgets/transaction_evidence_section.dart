@@ -32,17 +32,17 @@ class TransactionEvidenceSection extends ConsumerWidget {
                   const SizedBox(height: 8),
                   if (!hasPhoto)
                     const Text(
-                        'Tidak ada foto bukti pengambilan. Foto bersifat opsional.'),
+                        'Foto opsional, belum tersedia'),
                   if (hasPhoto) ...[
                     const Text(
-                        'Foto ini adalah bukti barang diambil, bukan bukti transfer/pembayaran.'),
+                        'Bukti pengambilan, bukan pembayaran'),
                     const SizedBox(height: 12),
                     bytes!.when(
                         loading: () => const SizedBox(
                             height: 120,
                             child: Center(child: CircularProgressIndicator())),
                         error: (_, __) => const Text(
-                            'Pratinjau belum dapat dimuat. Gunakan tombol di bawah untuk mencoba lagi.'),
+                            'Pratinjau gagal dimuat'),
                         data: (value) => Image.memory(value,
                             height: 160,
                             cacheWidth: 480,
@@ -82,8 +82,7 @@ class TransactionPaymentHistory extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             if (transaction.payments.isEmpty)
-              const Text('Rincian pembayaran belum tersedia. '
-                  'Pembayaran/data lama tanpa informasi pencatat tidak dibuatkan riwayat perkiraan.'),
+              const Text('Rincian pembayaran belum tersedia'),
             ...transaction.payments.map((payment) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Column(

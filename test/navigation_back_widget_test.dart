@@ -332,6 +332,9 @@ void main() {
         'Tidak disimpan');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expect(find.text('Batalkan perubahan?'), findsOneWidget);
+    await tester.tap(find.text('Ya, batalkan'));
+    await tester.pumpAndSettle();
     expect(find.text('Pelanggan Baru'), findsNothing);
     expect(find.byType(NewTransactionScreen), findsOneWidget);
     expect(repository.saves, 0);
@@ -466,6 +469,9 @@ void main() {
         await tester.pumpAndSettle();
       } else {
         await _back(tester);
+        expect(find.text('Batalkan perubahan?'), findsOneWidget);
+        await tester.tap(find.text('Ya, batalkan'));
+        await tester.pumpAndSettle();
       }
       expect(find.text('Pelanggan Baru'), findsNothing);
       expect(find.byType(CustomersScreen), findsOneWidget);
@@ -649,6 +655,11 @@ void main() {
         expect(find.byType(NewTransactionScreen), findsNothing);
       }
       await _back(tester);
+      if (!success) {
+        expect(find.text('Batalkan perubahan?'), findsOneWidget);
+        await tester.tap(find.text('Ya, batalkan'));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('Beranda uji'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -748,6 +759,9 @@ void main() {
           of: find.byType(BottomSheet), matching: find.byType(TextFormField));
       await tester.enterText(fields.first, 'Uji modal');
       await _back(tester);
+      expect(find.text('Batalkan perubahan?'), findsOneWidget);
+      await tester.tap(find.text('Ya, batalkan'));
+      await tester.pumpAndSettle();
       expect(find.byType(BottomSheet), findsNothing);
       expect(tester.takeException(), isNull);
     });

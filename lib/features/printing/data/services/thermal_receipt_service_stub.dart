@@ -1,8 +1,11 @@
 import '../../../transactions/domain/entities/transaction_entity.dart';
+import 'printer_device_service_stub.dart';
 
 /// Implementasi web: Bluetooth ESC/POS bukan capability browser yang didukung
 /// plugin. Kontrak tetap sama supaya seluruh aplikasi tetap dapat dijalankan.
 class ThermalReceiptService {
+  ThermalReceiptService({PrinterDeviceService? printerDeviceService});
+
   static String buildEstimateSummary(TransactionEntity transaction) {
     if (!transaction.hasEstimatedFinish) return 'tanpa estimasi';
     final diff =

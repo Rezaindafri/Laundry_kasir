@@ -11,6 +11,7 @@ import '../constants/storage_keys.dart';
 import '../error/exceptions.dart';
 import 'api_endpoints.dart';
 import 'session_expiry.dart';
+import 'request_failure_notice.dart';
 
 /// Wrapper Dio dengan:
 /// - Base URL & timeout dari AppConstants
@@ -32,6 +33,10 @@ class DioClient {
   final Logger _logger = Logger();
   final _sessionExpiryController =
       StreamController<SessionExpiryEvent>.broadcast();
+  final _failureController = StreamController<RequestFailureNotice>.broadcast();
+
+  Stream<RequestFailureNotice> get requestFailureEvents =>
+      _failureController.stream;
 
   Stream<SessionExpiryEvent> get sessionExpiryEvents =>
       _sessionExpiryController.stream;
@@ -39,6 +44,7 @@ class DioClient {
   Future<void> dispose() async {
     dio.close(force: true);
     await _sessionExpiryController.close();
+    await _failureController.close();
   }
 
   late final Dio dio = _createDio();
@@ -48,6 +54,7 @@ class DioClient {
       BaseOptions(
         baseUrl: AppConstants.baseUrl,
         connectTimeout: AppConstants.connectTimeout,
+        sendTimeout: AppConstants.receiveTimeout,
         receiveTimeout: AppConstants.receiveTimeout,
         contentType: 'application/json',
       ),
@@ -60,8 +67,20 @@ class DioClient {
           if (options.path.endsWith(ApiEndpoints.login)) {
             options.headers.remove('Authorization');
           } else {
-            final token =
-                await _secureStorage.read(key: StorageKeys.accessToken);
+            String? token;
+            try {
+              token = await _secureStorage
+                  .read(key: StorageKeys.accessToken)
+                  .timeout(AppConstants.connectTimeout);
+            } catch (error, stack) {
+              // Async interceptors must always resolve/reject, even when secure
+              // storage fails. Never send an authenticated request anonymously.
+              return handler.reject(DioException(
+                  requestOptions: options,
+                  error: const ServerException(
+                      'Sesi belum dapat dibaca. Coba lagi.'),
+                  stackTrace: stack));
+            }
             if (token != null) {
               options.headers['Authorization'] = 'Bearer $token';
             }
@@ -71,7 +90,7 @@ class DioClient {
         onError: (DioException error, handler) async {
           final isRejectedLogin = error.response?.statusCode == 401 &&
               error.requestOptions.path.endsWith('/auth/login');
-          if (kDebugMode) {
+          if (kDebugMode && error.requestOptions.extra['silentFailure'] != true) {
             final message = '[API ${isRejectedLogin ? 'INFO' : 'ERROR'}] '
                 '${error.requestOptions.method} ${error.requestOptions.path} '
                 '-> ${error.response?.statusCode ?? error.type.name}';
@@ -92,6 +111,22 @@ class DioClient {
                       true);
           final authorization =
               error.requestOptions.headers['Authorization']?.toString();
+          final failure = RequestFailureNotice.fromError(error);
+          // Ignore responses from an account that has since logged out or
+          // switched. Background prefetches also opt out of notifications.
+          if (failure != null && !_failureController.isClosed) {
+            try {
+              final currentToken = await _secureStorage
+                  .read(key: StorageKeys.accessToken)
+                  .timeout(AppConstants.connectTimeout);
+              if (authorization == null ||
+                  authorization == 'Bearer $currentToken') {
+                _failureController.add(failure);
+              }
+            } catch (_) {
+              // Notification failure must not leave the Dio handler pending.
+            }
+          }
           if (!error.requestOptions.path.endsWith(ApiEndpoints.login) &&
               (error.response?.statusCode == 401 || inactiveAccount) &&
               authorization?.startsWith('Bearer ') == true &&

@@ -79,8 +79,8 @@ class ServiceSearchDelegate extends SearchDelegate<LaundryServiceEntity?> {
           padding: const EdgeInsets.all(24),
           child: Text(
             services.isEmpty
-                ? 'Data layanan aktif saat ini belum tersedia.'
-                : 'Layanan tidak ditemukan untuk pencarian ini.',
+                ? 'Layanan aktif belum tersedia'
+                : 'Layanan tidak ditemukan',
             textAlign: TextAlign.center,
           ),
         ),

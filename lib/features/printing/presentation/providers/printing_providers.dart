@@ -4,7 +4,9 @@ import '../../data/services/printer_device_service.dart';
 import '../../data/services/thermal_receipt_service.dart';
 
 final thermalReceiptServiceProvider =
-    Provider<ThermalReceiptService>((ref) => ThermalReceiptService());
+    Provider<ThermalReceiptService>((ref) => ThermalReceiptService(
+          printerDeviceService: ref.watch(printerDeviceServiceProvider),
+        ));
 
 final printerDeviceServiceProvider =
     Provider<PrinterDeviceService>((ref) => PrinterDeviceService());

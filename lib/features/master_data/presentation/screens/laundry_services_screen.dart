@@ -30,8 +30,18 @@ class LaundryServicesScreen extends ConsumerWidget {
                 label: const Text('Tambah')),
             body: services.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) =>
-                    Center(child: Text('Data layanan gagal dimuat: $error')),
+                error: (error, _) => Center(
+                        child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Gagal memuat layanan'),
+                        OutlinedButton(
+                            onPressed: () => ref
+                                .read(laundryServicesProvider.notifier)
+                                .refresh(),
+                            child: const Text('Coba lagi')),
+                      ],
+                    )),
                 data: (items) => RefreshIndicator(
                     onRefresh: () =>
                         ref.read(laundryServicesProvider.notifier).refresh(),
@@ -44,12 +54,11 @@ class LaundryServicesScreen extends ConsumerWidget {
                               Icon(Icons.local_laundry_service_outlined,
                                   size: 48, color: AppColors.textSecondary),
                               SizedBox(height: 12),
-                              Text(
-                                  'Data layanan laundry saat ini belum tersedia.',
+                              Text('Layanan belum tersedia',
                                   textAlign: TextAlign.center),
                               SizedBox(height: 6),
                               Text(
-                                'Tambahkan layanan agar transaksi dapat dibuat.',
+                                'Tambahkan layanan pertama',
                                 textAlign: TextAlign.center,
                                 style:
                                     TextStyle(color: AppColors.textSecondary),
@@ -98,6 +107,7 @@ class LaundryServicesScreen extends ConsumerWidget {
 
   Future<void> _showForm(BuildContext context, WidgetRef ref,
       {LaundryServiceEntity? service}) async {
+    if (!isCurrentPage(context)) return;
     final formKey = GlobalKey<FormState>();
     final name = TextEditingController(text: service?.name);
     final price = TextEditingController(text: service?.price.toString());
@@ -105,142 +115,196 @@ class LaundryServicesScreen extends ConsumerWidget {
     final duration =
         TextEditingController(text: service?.estimatedHours.toString());
     var estimateUnit = service?.estimateUnit ?? EstimateDurationUnit.hours;
+    var saving = false;
+    String? saveError;
 
     try {
       final result = await showSafeModalBottomSheet<LaundryServiceEntity>(
         context: context,
         isScrollControlled: true,
-        builder: (ctx) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            24,
-            24,
-            24 + MediaQuery.viewInsetsOf(ctx).bottom,
-          ),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      service == null ? 'Layanan Baru' : 'Ubah Layanan',
-                      style: Theme.of(ctx).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: name,
-                      decoration:
-                          const InputDecoration(labelText: 'Nama layanan'),
-                      validator: (value) =>
-                          Validators.required(value, field: 'Nama layanan'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: price,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Harga'),
-                      validator: (value) =>
-                          Validators.positiveNumber(value, field: 'Harga'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: unit,
-                      decoration: const InputDecoration(
-                        labelText: 'Unit',
-                        hintText: 'Contoh: kg, item, load, helai',
-                      ),
-                      validator: (value) =>
-                          Validators.required(value, field: 'Unit'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: duration,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Estimasi selesai',
-                        helperText:
-                            'Kosong atau 0: tanpa proses, langsung siap diambil',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) return null;
-                        final duration = int.tryParse(value.trim());
-                        return duration == null ||
-                                duration < 0 ||
-                                duration > 3650
-                            ? 'Isi bilangan bulat 0–3650, atau kosongkan.'
-                            : null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<EstimateDurationUnit>(
-                      initialValue: estimateUnit,
-                      decoration: const InputDecoration(
-                        labelText: 'Satuan estimasi',
-                      ),
-                      items: EstimateDurationUnit.values
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(
-                                value == EstimateDurationUnit.hours
-                                    ? 'Jam'
-                                    : 'Hari',
-                              ),
+        // Opening a new service is itself a creation flow: confirm dismissal
+        // even before typing, unlike an unchanged existing service.
+        hasUnsavedChanges: () =>
+            service == null ||
+            name.text != service.name ||
+            price.text != service.price.toString() ||
+            unit.text != service.unit ||
+            duration.text != service.estimatedHours.toString() ||
+            estimateUnit != service.estimateUnit,
+        discardListenables: [name, price, unit, duration],
+        builder: (ctx) => StatefulBuilder(
+            builder: (ctx, updateSheet) => AbsorbPointer(
+                absorbing: saving,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    24,
+                    24,
+                    24 + MediaQuery.viewInsetsOf(ctx).bottom,
+                  ),
+                  child: SafeArea(
+                    child: SingleChildScrollView(
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              service == null ? 'Layanan Baru' : 'Ubah Layanan',
+                              style: Theme.of(ctx).textTheme.titleLarge,
                             ),
-                          )
-                          .toList(),
-                      onChanged: (value) =>
-                          estimateUnit = value ?? EstimateDurationUnit.hours,
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: () {
-                        if (formKey.currentState == null) {
-                          return;
-                        }
-
-                        final isValid = formKey.currentState!.validate();
-                        if (isValid == false) {
-                          return;
-                        }
-
-                        if (Navigator.canPop(ctx)) {
-                          Navigator.of(ctx).pop(
-                            LaundryServiceEntity(
-                              id: service?.id ?? '',
-                              name: name.text.trim(),
-                              price: double.parse(
-                                price.text.replaceAll(',', '.'),
-                              ),
-                              unit: unit.text.trim(),
-                              estimatedHours:
-                                  int.tryParse(duration.text.trim()) ?? 0,
-                              estimateUnit: estimateUnit,
-                              isActive: service?.isActive ?? true,
+                            const SizedBox(height: 20),
+                            TextFormField(
+                              controller: name,
+                              decoration: const InputDecoration(
+                                  labelText: 'Nama layanan'),
+                              validator: (value) => Validators.required(value,
+                                  field: 'Nama layanan'),
                             ),
-                          );
-                        }
-                      },
-                      child: const Text('Simpan'),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: price,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Harga'),
+                              validator: (value) => Validators.positiveNumber(
+                                  value,
+                                  field: 'Harga'),
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: unit,
+                              decoration: const InputDecoration(
+                                labelText: 'Unit',
+                                hintText: 'Contoh: kg, item, load, helai',
+                              ),
+                              validator: (value) =>
+                                  Validators.required(value, field: 'Unit'),
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: duration,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Estimasi selesai',
+                                helperText: '0/kosong: langsung siap',
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty)
+                                  return null;
+                                final duration = int.tryParse(value.trim());
+                                return duration == null ||
+                                        duration < 0 ||
+                                        duration > 3650
+                                    ? 'Isi bilangan bulat 0–3650, atau kosongkan.'
+                                    : null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<EstimateDurationUnit>(
+                              initialValue: estimateUnit,
+                              decoration: const InputDecoration(
+                                labelText: 'Satuan estimasi',
+                              ),
+                              items: EstimateDurationUnit.values
+                                  .map(
+                                    (value) => DropdownMenuItem(
+                                      value: value,
+                                      child: Text(
+                                        value == EstimateDurationUnit.hours
+                                            ? 'Jam'
+                                            : 'Hari',
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) => estimateUnit =
+                                  value ?? EstimateDurationUnit.hours,
+                            ),
+                            const SizedBox(height: 20),
+                            if (saveError != null)
+                              Text(saveError!,
+                                  style: TextStyle(
+                                    color: Theme.of(ctx).colorScheme.error,
+                                  )),
+                            TextButton(
+                              onPressed: () => Navigator.maybePop(ctx),
+                              child: const Text('Batal'),
+                            ),
+                            FilledButton(
+                              onPressed: () async {
+                                if (saving || !isCurrentPage(ctx)) return;
+                                if (formKey.currentState == null) {
+                                  return;
+                                }
+
+                                final isValid =
+                                    formKey.currentState!.validate();
+                                if (isValid == false) {
+                                  return;
+                                }
+
+                                updateSheet(() {
+                                  saving = true;
+                                  saveError = null;
+                                });
+                                try {
+                                  final saved = await withNavigationWriteLock(
+                                    ref,
+                                    () => ref
+                                        .read(laundryServicesProvider.notifier)
+                                        .save(
+                                          LaundryServiceEntity(
+                                            id: service?.id ?? '',
+                                            name: name.text.trim(),
+                                            price: double.parse(
+                                              price.text.replaceAll(',', '.'),
+                                            ),
+                                            unit: unit.text.trim(),
+                                            estimatedHours: int.tryParse(
+                                                    duration.text.trim()) ??
+                                                0,
+                                            estimateUnit: estimateUnit,
+                                            isActive: service?.isActive ?? true,
+                                          ),
+                                        ),
+                                  );
+                                  if (!ctx.mounted) return;
+                                  saved.when(
+                                    success: (item) =>
+                                        Navigator.of(ctx).pop(item),
+                                    error: (failure) => updateSheet(
+                                        () => saveError = failure.message),
+                                  );
+                                } catch (_) {
+                                  if (ctx.mounted) {
+                                    updateSheet(() => saveError =
+                                        'Gagal menyimpan layanan. Periksa data terbaru.');
+                                  }
+                                } finally {
+                                  if (ctx.mounted)
+                                    updateSheet(() => saving = false);
+                                }
+                              },
+                              child: Text(saving ? 'Menyimpan…' : 'Simpan'),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+                  ),
+                ))),
       );
 
       if (!isCurrentPage(context)) return;
       if (result != null) {
-        final saved = await withNavigationWriteLock(
-            ref, () => ref.read(laundryServicesProvider.notifier).save(result));
-        if (context.mounted) {
-          _showResult(context, saved, 'Data layanan berhasil disimpan.');
-        }
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('Data layanan berhasil disimpan.'),
+          ));
       }
     } finally {
       name.dispose();

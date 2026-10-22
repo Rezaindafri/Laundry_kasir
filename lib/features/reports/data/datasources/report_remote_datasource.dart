@@ -11,6 +11,7 @@ abstract class ReportRemoteDataSource {
     required DateTime startDate,
     required DateTime endDate,
     String? cashierId,
+    bool background = false,
   });
 
   Future<Uint8List> exportCsv({
@@ -30,10 +31,12 @@ class ReportRemoteDataSourceImpl implements ReportRemoteDataSource {
     required DateTime startDate,
     required DateTime endDate,
     String? cashierId,
+    bool background = false,
   }) async {
     try {
       final response = await dio.get(
         ApiEndpoints.reportsOverview,
+        options: Options(extra: {'silentFailure': background}),
         queryParameters: {
           ..._dateParameters(startDate, endDate),
           if (cashierId != null) 'cashier_id': cashierId,
@@ -80,12 +83,26 @@ class ReportRemoteDataSourceImpl implements ReportRemoteDataSource {
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
   Map<String, dynamic> _data(dynamic response) {
-    if (response is! Map) return <String, dynamic>{};
+    if (response is! Map || response['data'] is! Map) {
+      throw const ServerException('Gagal memuat laporan. Respons tidak valid.');
+    }
     final data = response['data'];
-    return data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    if (data['period'] is! Map ||
+        data['summary'] is! Map ||
+        data['summary']['payments_received'] is! num ||
+        DateTime.tryParse(data['period']['start_date']?.toString() ?? '') ==
+            null ||
+        DateTime.tryParse(data['period']['end_date']?.toString() ?? '') ==
+            null) {
+      throw const ServerException('Gagal memuat laporan. Data tidak lengkap.');
+    }
+    return Map<String, dynamic>.from(data as Map);
   }
 
   ServerException _serverException(DioException error, String fallback) {
+    if ((error.response?.statusCode ?? 0) >= 500) {
+      return ServerException(fallback, statusCode: error.response?.statusCode);
+    }
     final body = error.response?.data;
     final message = body is Map ? body['message']?.toString() : null;
     return ServerException(

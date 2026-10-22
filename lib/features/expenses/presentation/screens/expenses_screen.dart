@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/unsaved_changes_guard.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -55,7 +56,7 @@ class ExpensesScreen extends ConsumerWidget {
                     SizedBox(height: 12),
                     Center(
                       child: Text(
-                        'Belum ada pengeluaran tercatat.\nTekan tombol untuk menambahkan catatan pertama.',
+                        'Pengeluaran belum tersedia',
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -101,6 +102,7 @@ class ExpensesScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      enableDrag: false,
       builder: (_) => _ExpenseFormSheet(expense: expense),
     );
     if (input == null || !isCurrentPage(context)) return;
@@ -291,6 +293,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
   late final TextEditingController _categoryController;
   late final TextEditingController _descriptionController;
   late DateTime _occurredAt;
+  late DateTime _initialOccurredAt;
 
   @override
   void initState() {
@@ -308,6 +311,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
     _occurredAt = expense == null
         ? BusinessTime.calendarNow()
         : BusinessTime.wallTime(expense.occurredAt);
+    _initialOccurredAt = _occurredAt;
   }
 
   @override
@@ -321,7 +325,14 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
+    return UnsavedChangesGuard(
+      hasUnsavedChanges: () =>
+          _amountController.text != (widget.expense?.amount.toString() ?? '') ||
+          _categoryController.text != (widget.expense?.category ?? 'Operasional') ||
+          _descriptionController.text != (widget.expense?.description ?? '') ||
+          _occurredAt != _initialOccurredAt,
+      listenables: [_amountController, _categoryController, _descriptionController],
+      child: Padding(
       padding: EdgeInsets.fromLTRB(20, 16, 20, bottom + 20),
       child: Form(
         key: _formKey,
@@ -399,7 +410,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Future<void> _pickOccurredAt() async {

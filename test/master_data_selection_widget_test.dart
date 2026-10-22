@@ -150,7 +150,7 @@ void main() {
     await _pickCustomer(tester);
     await tester.pumpAndSettle();
     expect(
-        find.text('Data pelanggan saat ini belum tersedia.'), findsOneWidget);
+        find.text('Pelanggan belum tersedia'), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox.shrink());
@@ -159,7 +159,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'tidak cocok');
     await tester.pumpAndSettle();
-    expect(find.text('Pelanggan tidak ditemukan untuk pencarian ini.'),
+    expect(find.text('Pelanggan tidak ditemukan'),
         findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -190,7 +190,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'dina');
     await tester.pumpAndSettle();
-    expect(find.text('Pelanggan tidak ditemukan untuk pencarian ini.'),
+    expect(find.text('Pelanggan tidak ditemukan'),
         findsOneWidget);
     catalogue = [..._customers, const CustomerEntity(id: 'd', name: 'Dina')];
     await tester.tap(find.byTooltip('Perbarui daftar pelanggan'));
@@ -219,7 +219,7 @@ void main() {
     expect(_visibleNames(tester), ['barang', ' Cuci', 'Setrika']);
     await tester.enterText(find.byType(TextField), 'tidak cocok');
     await tester.pumpAndSettle();
-    expect(find.text('Layanan tidak ditemukan untuk pencarian ini.'),
+    expect(find.text('Layanan tidak ditemukan'),
         findsOneWidget);
     expect(tester.takeException(), isNull);
   });

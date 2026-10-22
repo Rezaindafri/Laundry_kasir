@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/widgets/navigation_write_guard.dart';
 import '../../../../core/widgets/safe_modal_sheet.dart';
+import '../../../../core/widgets/unsaved_changes_guard.dart';
 import '../../../../core/widgets/page_visibility_refresh.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +18,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/utils/business_time.dart';
 import '../../../../core/utils/name_sort.dart';
+import '../../../../core/utils/receipt_text.dart';
 import '../../../../shared/enums/user_role.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
@@ -793,6 +795,29 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
 
   int get _total => _subtotal + _expressFee;
 
+  bool get _hasDraft =>
+      _customer?.id != widget.initialCustomer?.id ||
+      _lines.any((line) => line.service != null ||
+          line.quantity.text.isNotEmpty && line.quantity.text != '1') ||
+      _notes.text.isNotEmpty || _express ||
+      _paymentMethod != PaymentMethod.cash ||
+      _paymentStatus != PaymentStatus.unpaid;
+
+  Future<void> _removeServiceLine(_ServiceDraft line) async {
+    final confirmed = await showActionConfirmation(
+      context: context,
+      title: 'Hapus layanan dari bon?',
+      message: '${line.service?.name ?? 'Baris layanan ini'} akan dihapus dari draft transaksi. Apakah Anda yakin?',
+      confirmLabel: 'Hapus layanan',
+    );
+    if (!confirmed || !mounted || _saving || !_lines.contains(line)) return;
+    FocusScope.of(context).unfocus();
+    _updateBill(() {
+      _lines.remove(line);
+      _retired.add(line);
+    });
+  }
+
   Future<void> _refreshCatalog() async {
     if (_saving) return;
     ref.invalidate(paymentDestinationsProvider);
@@ -857,13 +882,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
                           tooltip: 'Hapus layanan dari bon',
                           onPressed: _saving
                               ? null
-                              : () {
-                                  FocusScope.of(context).unfocus();
-                                  _updateBill(() {
-                                    _lines.remove(line);
-                                    _retired.add(line);
-                                  });
-                                },
+                              : () => _removeServiceLine(line),
                           icon: const Icon(Icons.remove_circle_outline))
                   ]),
                   const SizedBox(height: 8),
@@ -958,6 +977,9 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
       context: context,
       isScrollControlled: true,
       controllers: [name, phone, address],
+      hasUnsavedChanges: () => name.text.isNotEmpty || phone.text.isNotEmpty ||
+          address.text.isNotEmpty || gender != CustomerGender.male,
+      discardListenables: [name, phone, address],
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setState) => SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
@@ -1192,6 +1214,9 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
     ref.watch(laundryServicesProvider);
     return PageVisibilityRefresh(refreshOnMount: _catalogCached,
         onVisible: _refreshCatalog, child: NavigationWriteGuard(
+        child: UnsavedChangesGuard(
+        hasUnsavedChanges: () => _hasDraft,
+        listenables: [_notes, _initialPayment, ..._lines.map((line) => line.quantity)],
         child: Scaffold(
       appBar: AppBar(title: const Text('Transaksi Baru')),
       body: Form(
@@ -1255,7 +1280,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
               value: _express,
               title: const Text('Layanan Express'),
               subtitle: const Text(
-                  'Tambahan biaya 25% untuk tiap layanan pada bon ini'),
+                  'Tambahan 25% per layanan'),
               onChanged:
                   _saving ? null : (value) => _updateBill(() => _express = value),
             ),
@@ -1310,7 +1335,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
               PaymentAmountField(
                   controller: _initialPayment,
                   helperText:
-                      'Terisi sesuai total tagihan. Ketik untuk mengganti; pembayaran sebagian dicatat sebagai DP.',
+                      'Otomatis; ketik untuk mengganti',
                   validator: _validateInitialPayment,
                   onChanged: (_) => setState(_syncPaymentStatus)),
             ],
@@ -1356,7 +1381,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
           ),
         ),
       ),
-    )));
+    ))));
   }
 }
 
@@ -1778,6 +1803,7 @@ class _CollectionSettlementScreenState
               .toInt(),
           method: _transaction.paymentMethod,
           forCollection: true),
+      enableDrag: false,
     );
     if (entry == null || !isCurrentPage(context)) return;
 
@@ -1819,6 +1845,7 @@ class _CollectionSettlementScreenState
           maximum: _transaction.remainingPayment,
           method: _transaction.paymentMethod,
           previous: _failedPayment),
+      enableDrag: false,
     );
     if (entry == null || !isCurrentPage(context)) return;
 
@@ -1854,6 +1881,8 @@ class _CollectionSettlementScreenState
     final canCollect = transaction.hasReadyItems;
 
     return PageVisibilityRefresh(onVisible: _refreshTransaction, child: NavigationWriteGuard(
+        child: UnsavedChangesGuard(
+        hasUnsavedChanges: () => _proofImage != null,
         child: Scaffold(
       appBar: AppBar(title: const Text('Pengambilan / Pembayaran')),
       bottomNavigationBar: SafeArea(
@@ -1912,7 +1941,7 @@ class _CollectionSettlementScreenState
                         }
                       })),
               const Text(
-                  'Pilih layanan yang sudah siap. Pengambilan berlaku untuk seluruh jumlah pada layanan terpilih.'),
+                  'Ambil seluruh layanan terpilih'),
               const SizedBox(height: 20),
               Text(
                 'Bukti pengambilan (opsional)',
@@ -2024,7 +2053,7 @@ class _CollectionSettlementScreenState
               ],
             ],
           )),
-    )));
+    ))));
   }
 }
 
@@ -2050,8 +2079,26 @@ class _PrintReceiptButton extends ConsumerWidget {
   }
 
   Future<void> _chooseReceiptAction(BuildContext context, WidgetRef ref) async {
-    final settings = ref.read(laundrySettingsProvider).valueOrNull;
-    final canPrint = settings?.defaultPrinter?.isNotEmpty ?? false;
+    if (!isCurrentPage(context) || ref.read(receiptPrintingProvider) ||
+        ref.read(receiptSharingProvider)) return;
+    final preparing = ref.read(receiptSharingProvider.notifier);
+    preparing.state = true;
+    late final LaundrySettings settings;
+    try {
+      // Do not capture null on the first tap while settings are still loading:
+      // both the receipt and its caption must use this business's actual name.
+      settings = await ref.read(laundrySettingsProvider.future);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Pengaturan usaha belum dapat dimuat. Silakan coba lagi.')));
+      }
+      return;
+    } finally {
+      if (preparing.mounted) preparing.state = false;
+    }
+    if (!isCurrentPage(context)) return;
+    final canPrint = settings.defaultPrinter?.isNotEmpty ?? false;
     final canShareWhatsApp = WhatsAppLauncher.hasValidPhone(
       transaction.customerPhone,
     );
@@ -2063,15 +2110,15 @@ class _PrintReceiptButton extends ConsumerWidget {
           children: [
             const ListTile(
               title: Text('Bon transaksi'),
-              subtitle: Text('Pilih cara mengirimkan bon kepada pelanggan'),
+              subtitle: Text('Pilih pengiriman bon'),
             ),
             ListTile(
               enabled: canPrint,
               leading: const Icon(Icons.print_outlined),
               title: const Text('Print bon'),
               subtitle: Text(canPrint
-                  ? settings?.defaultPrinterName ?? 'Printer aplikasi'
-                  : 'Pilih printer terlebih dahulu di Pengaturan'),
+                  ? settings.defaultPrinterName ?? 'Printer aplikasi'
+                  : 'Pilih printer di Pengaturan'),
               onTap: canPrint
                   ? () => Navigator.pop(sheetContext, _ReceiptAction.print)
                   : null,
@@ -2081,8 +2128,8 @@ class _PrintReceiptButton extends ConsumerWidget {
               leading: const Icon(Icons.image_outlined),
               title: const Text('Kirim bon ke WhatsApp'),
               subtitle: Text(canShareWhatsApp
-                  ? 'Bagikan bon dalam bentuk foto'
-                  : 'Nomor WhatsApp pelanggan belum tersedia atau tidak valid'),
+                  ? 'Kirim foto struk'
+                  : 'Nomor WhatsApp belum valid'),
               onTap: canShareWhatsApp
                   ? () => Navigator.pop(sheetContext, _ReceiptAction.whatsApp)
                   : null,
@@ -2098,7 +2145,7 @@ class _PrintReceiptButton extends ConsumerWidget {
         await _printReceipt(
           context,
           ref,
-          settings?.defaultPrinter ?? '',
+          settings.defaultPrinter ?? '',
           settings,
         );
         break;
@@ -2177,8 +2224,12 @@ class _PrintReceiptButton extends ConsumerWidget {
         phone: transaction.customerPhone,
         image: image,
         filename: 'bon-${transaction.invoice}.png',
-        message:
-            'Halo ${transaction.customerName}, berikut bon laundry ${transaction.invoice}.',
+        message: ReceiptText.whatsAppCaption(
+          customerName: transaction.customerName,
+          businessName: settings?.businessName ?? 'CLEAN FRESH LAUNDRY',
+          invoice: transaction.invoice,
+          total: transaction.total,
+        ),
       );
       if (!opened && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2225,10 +2276,11 @@ class ReceiptImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         width: 420,
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         color: Colors.white,
         child: DefaultTextStyle(
-          style: const TextStyle(color: Colors.black87, fontSize: 14),
+          style: const TextStyle(
+              color: Colors.black87, fontSize: 14, fontFamily: 'monospace'),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2238,7 +2290,7 @@ class ReceiptImage extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.black,
-                  fontSize: 22,
+                fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -2247,27 +2299,31 @@ class ReceiptImage extends StatelessWidget {
                 Text(businessPhone, textAlign: TextAlign.center),
               ],
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14),
+                padding: EdgeInsets.symmetric(vertical: 6),
                 child: Divider(color: Colors.black54),
               ),
-              const Text(
-                'KODE PENGAMBILAN',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Center(child: QrImageView(data: transaction.invoice, size: 150)),
-              const SizedBox(height: 6),
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                QrImageView(data: transaction.invoice, size: 148,
+                    semanticsLabel: 'Kode transaksi ${transaction.invoice}',
+                    backgroundColor: Colors.white, padding: const EdgeInsets.all(20)),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(transaction.customerName,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      if (transaction.customerPhone.trim().isNotEmpty)
+                        Text(transaction.customerPhone),
+                    ])),
+              ]),
               Text(
                 transaction.invoice,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.left,
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14),
+                padding: EdgeInsets.symmetric(vertical: 6),
                 child: Divider(color: Colors.black54),
               ),
-              _ReceiptLine(label: 'Pelanggan', value: transaction.customerName),
               _ReceiptLine(
                 label: 'Tanggal masuk',
                 value:
@@ -2279,8 +2335,10 @@ class ReceiptImage extends StatelessWidget {
                     ? '${_dateTime.format(BusinessTime.wallTime(transaction.estimatedFinishAt))} WIB'
                     : 'Tanpa estimasi',
               ),
+              const SizedBox(height: 6),
+              const Text('Layanan', style: TextStyle(fontWeight: FontWeight.bold)),
               for (final line in transaction.serviceLines) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 _ReceiptLine(
                     label: line.name,
                     small: true,
@@ -2317,11 +2375,11 @@ class ReceiptImage extends StatelessWidget {
                 value: transaction.paymentStatus.label,
               ),
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14),
+                padding: EdgeInsets.symmetric(vertical: 6),
                 child: Divider(color: Colors.black54),
               ),
               const Text(
-                'Tunjukkan bon ini saat pengambilan laundry.\nTerima kasih.',
+                '${ReceiptText.collectionPaymentNote}\nTerima kasih.',
                 textAlign: TextAlign.center,
               ),
             ],

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
@@ -11,6 +12,8 @@ import 'package:laundry_management_system/features/auth/domain/entities/user_ent
 import 'package:laundry_management_system/features/auth/presentation/providers/auth_providers.dart';
 import 'package:laundry_management_system/features/settings/data/datasources/payment_destination_datasource.dart';
 import 'package:laundry_management_system/features/settings/domain/entities/payment_destination.dart';
+import 'package:laundry_management_system/features/settings/domain/entities/laundry_settings.dart';
+import 'package:laundry_management_system/features/settings/presentation/providers/settings_providers.dart';
 import 'package:laundry_management_system/features/settings/presentation/providers/payment_destination_providers.dart';
 import 'package:laundry_management_system/features/transactions/data/repositories/mock_transaction_repository.dart';
 import 'package:laundry_management_system/features/transactions/domain/entities/transaction_entity.dart';
@@ -169,8 +172,47 @@ class _Orders extends MockTransactionRepository {
   Future<Success<TransactionEntity>> getById(String id) async => Success(order);
 }
 
+class _SlowSettings extends LaundrySettingsNotifier {
+  _SlowSettings(this.pending);
+  final Completer<LaundrySettings> pending;
+  @override
+  Future<LaundrySettings> build() => pending.future;
+}
+
 void main() {
   setUpAll(() => initializeDateFormatting('id_ID'));
+
+  testWidgets(
+      'first receipt action waits for actual business and saved printer settings',
+      (tester) async {
+    final settings = Completer<LaundrySettings>();
+    final order = _order();
+    await tester.pumpWidget(ProviderScope(overrides: [
+      sessionProvider.overrideWith(_Session.new),
+      transactionRepositoryProvider.overrideWithValue(_Orders(order)),
+      laundrySettingsProvider.overrideWith(() => _SlowSettings(settings)),
+    ], child: MaterialApp(home: TransactionDetailScreen(transaction: order))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cetak Bon'));
+    await tester.pump();
+    expect(find.text('Memproses...'), findsOneWidget);
+    expect(find.text('Print bon'), findsNothing);
+    settings.complete(const LaundrySettings(
+        businessName: 'Usaha sebenarnya',
+        phone: '',
+        address: '',
+        paperSize: '58 mm',
+        defaultPrinter: 'AA:BB:CC:DD:EE:FF',
+        defaultPrinterName: 'Printer tersimpan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Printer tersimpan'), findsOneWidget);
+    final printChoice = tester.widget<ListTile>(find.ancestor(
+        of: find.text('Print bon'), matching: find.byType(ListTile)));
+    expect(printChoice.enabled, isTrue);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('cash has no destination lookup or extra account controls',
       (tester) async {
@@ -300,7 +342,7 @@ void main() {
         await tester.tap(find.text('Tutup'));
         await tester.pumpAndSettle();
       } else {
-        expect(find.textContaining('Tidak ada foto bukti pengambilan.'),
+        expect(find.textContaining('Foto opsional, belum tersedia'),
             findsOneWidget);
       }
       await tester.scrollUntilVisible(find.text('Utama - Bank A'), 200,

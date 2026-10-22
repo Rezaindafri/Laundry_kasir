@@ -74,8 +74,8 @@ class CustomerSearchDelegate extends SearchDelegate<CustomerEntity?> {
           padding: const EdgeInsets.all(24),
           child: Text(
             customers.isEmpty
-                ? 'Data pelanggan saat ini belum tersedia.'
-                : 'Pelanggan tidak ditemukan untuk pencarian ini.',
+                ? 'Pelanggan belum tersedia'
+                : 'Pelanggan tidak ditemukan',
             textAlign: TextAlign.center,
           ),
         ),

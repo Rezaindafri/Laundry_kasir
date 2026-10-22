@@ -2,7 +2,7 @@
 
 Aplikasi kasir dan manajemen operasional berbasis Flutter dengan REST API Laravel. Branding sudah KarsaOne; paket, folder, tabel, dan istilah layanan laundry yang ada dipertahankan agar tidak memutus integrasi/data.
 
-Terakhir diverifikasi: backend dan Flutter **11 Oktober 2026**. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi beberapa temuan audit dan verifikasi deployment masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
+Terakhir diverifikasi: Flutter **21 Oktober 2026**; hasil backend di bawah adalah snapshot pengujian sebelumnya. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi beberapa temuan audit dan verifikasi deployment masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
 
 ## Lokasi dan stack
 
@@ -43,12 +43,15 @@ Fitur yang telah terhubung ke Laravel:
 - Detail Transaksi mengambil detail langsung dari Laravel dan menampilkan bagian Bukti pengambilan (pratinjau + foto per layanan) serta Riwayat pembayaran (tanggal, metode, tujuan dan pencatat bila tersedia). Foto yang sudah ada adalah bukti pengambilan, bukan bukti transfer; foto tetap opsional. Data lama tanpa informasi diberi keterangan, tidak ditebak.
 - Estimasi layanan boleh 0/kosong untuk barang tanpa proses: langsung siap, tanpa tenggat keterlambatan. Bon cetak/gambar menampilkan estimasi masing-masing layanan.
 - Status berbasis waktu di backend dan scheduler laundry:sync-statuses.
-- Dashboard Owner/Kasir, laporan pembayaran bertanggal, ekspor CSV, filter akun termasuk Me.
+- Dashboard Owner/Kasir, laporan pembayaran bertanggal, ekspor CSV, filter akun termasuk Me. Laporan memiliki cache respons Laravel/prefetch terbatas per periode dan akun: cache hit langsung tampil, pilihan baru hanya memuat area hasil; respons lama tidak menimpa pilihan/sesi terbaru.
 - Periode laporan memakai WIB; timestamp tetap UTC. Bukti pengambilan diakses melalui API berizin, file baru disimpan privat.
 - Pengeluaran Owner dengan tanggal/waktu pilihan dan rincian laporan; belum ada status rencana/dibayar terpisah.
 - Audit perubahan akun, transaksi dan pengeluaran; profil/settings usaha.
 - Backup/restore **konfigurasi usaha**, bukan backup database/transaksi.
 - Bon foto/WhatsApp dan printer Bluetooth memiliki implementasi Android; pengujian perangkat nyata masih diperlukan.
+- Catatan bon cetak/gambar mencakup pengambilan/pembayaran transaksi. Caption WhatsApp memakai nama pelanggan/usaha, nomor transaksi dan total seluruh pesanan (format tebal WhatsApp), bukan nominal DP atau sisa tagihan. Pengaturan usaha ditunggu sebelum pilihan bon dibuka agar nama usaha dan printer tersimpan tersedia sejak pemakaian pertama. Layout struk memakai QR/identitas berdampingan dan jeda cetak akhir dikurangi dari delapan menjadi dua baris, tanpa menghilangkan rincian tagihan/estimasi.
+- Printer terakhir langsung tersimpan saat dipilih (lokal per perangkat, tanpa menyimpan draft usaha). Izin runtime CONNECT+SCAN diperiksa sebelum connect/cetak; pemilih printer dibatasi tinggi dan dapat di-scroll. Pembatalan draft form dan tindakan destruktif memakai konfirmasi; form kosong/pencarian tetap ditutup normal, kecuali pembuatan layanan baru yang selalu dikonfirmasi. Simpan layanan menunggu hasil API dan mempertahankan isian saat gagal. Detail: [printer dan konfirmasi](docs/PRINTER_KONFIRMASI_2026-10-21.md), [revisi layanan/Laporan/struk](docs/PERBAIKAN_LAYANAN_LAPORAN_STRUK_2026-10-22.md).
+- Request gagal jaringan/5xx diberi notifikasi singkat terpusat, timeout kirim/terima, dan deduplikasi notifikasi. Write tidak diulang otomatis: koneksi putus tidak membuktikan server gagal menyimpan, sehingga pengguna diminta memeriksa data terbaru dahulu.
 - Back menutup popup/drawer dahulu, lalu kembali satu halaman/tab. Konfirmasi keluar hanya pada Beranda tanpa riwayat sebelumnya. Form menunggu pelepasan overlay sebelum membuang controller; navigasi dikunci sementara selama penyimpanan. Scanner memakai controller kamera yang sama untuk preview/stop/galeri dan mengabaikan respons lookup setelah ditutup.
 
 “Ingat saya” dibatasi 30 hari lokal, dan token Laravel juga kedaluwarsa setelah 30 hari. Startup memverifikasi sesi melalui `/auth/me`, bukan mempercayai role akun lokal.
@@ -79,8 +82,8 @@ Scheduler terdaftar setiap menit di routes/console.php. Hosting perlu memanggil 
 | PHPUnit backend + regresi baru | **95 lulus**, 707 assertions, SQLite di memori; termasuk 8 tes tujuan pembayaran (86 assertions), enkripsi, QRIS privat, isolasi Owner, rollback dan retry |
 | Tes audit tambahan dengan token login asli | **13/13 lulus**, 105 assertions; sebelumnya 9 kasus gagal |
 | Regresi Laravel pembayaran, pengambilan bertahap dan isolasi owner (11 Oktober) | **3 lulus**, 35 assertions, SQLite di memori; endpoint tetap memakai validasi backend yang ada |
-| Flutter unit/widget | **138 lulus**; mencakup pilihan rekening/QRIS, kegagalan/retry, foto detail, refresh lifecycle, payload ketiga alur pembayaran serta regresi navigasi/nominal/bon/auth yang sudah ada |
-| Analisis Dart lib + test | **0 error, 11 warning, 1016 lint/hint informasi**; warning tersisa pada model auth dan dashboard Owner lama, bukan deklarasi tujuan pembayaran baru |
+| Flutter unit/widget | **199 lulus (22 Oktober)**; tambahan regresi konfirmasi/simpan layanan, cache dan race condition Laporan, timeout/notifikasi request, layout/byte struk 58/80 mm; regresi caption/WhatsApp, printer, pembayaran, navigasi dan auth tetap lulus |
+| Analisis Dart lib + test | **0 error, 11 warning lama**; lint/hint gaya masih tersedia, bukan klaim proyek bebas masalah. Warning tersisa pada model auth dan dashboard Owner lama |
 | Composer audit lockfile (runtime dan seluruh paket) | **0 advisori**, setelah upgrade terarah tiga paket |
 
 Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan data sintetis. Belum ada pengujian end-to-end Flutter → server hosting nyata atau seluruh perangkat.

@@ -41,19 +41,19 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
             children: [
               const ListTile(
                 title: Text('Ambil / Pelunasan'),
-                subtitle: Text('Pilih cara menemukan transaksi'),
+                subtitle: Text('Temukan transaksi'),
               ),
               ListTile(
                 leading: const Icon(Icons.qr_code_scanner_rounded),
                 title: const Text('Scan QR'),
-                subtitle: const Text('Scan kode pada bon laundry'),
+                subtitle: const Text('Pindai kode bon'),
                 onTap: () =>
                     Navigator.of(sheetContext).pop(_CollectionAction.scan),
               ),
               ListTile(
                 leading: const Icon(Icons.search_rounded),
                 title: const Text('Cari Transaksi'),
-                subtitle: const Text('Pilih dari daftar cucian belum diambil'),
+                subtitle: const Text('Daftar belum diambil'),
                 onTap: () =>
                     Navigator.of(sheetContext).pop(_CollectionAction.search),
               ),
@@ -272,7 +272,7 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                     Icon(Icons.info_outline_rounded,
                         size: 20, color: AppColors.textSecondary),
                     SizedBox(width: 8),
-                    Text('Ketuk kartu untuk melihat detail',
+                    Text('Ketuk untuk rincian',
                         style: AppTextStyles.bodyMuted),
                   ],
                 ),

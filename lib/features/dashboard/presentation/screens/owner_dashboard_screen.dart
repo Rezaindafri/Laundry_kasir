@@ -541,7 +541,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                       style: Theme.of(sheetContext).textTheme.titleLarge,
                     ),
                     subtitle: const Text(
-                      'Memiliki transaksi pada periode dan akun terpilih.',
+                      'Sesuai periode dan akun',
                     ),
                     trailing: Text('${customers.length}'),
                   );
@@ -602,7 +602,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                     contentPadding: EdgeInsets.zero,
                     title: Text(title,
                         style: Theme.of(sheetContext).textTheme.titleLarge),
-                    subtitle: const Text('Total sesuai ringkasan periode'),
+                    subtitle: const Text('Total periode terpilih'),
                     trailing: Text(currency.format(total),
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   );
@@ -1357,7 +1357,7 @@ class _EmptyRevenueState extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Data pendapatan akan muncul setelah transaksi berhasil dibayar.',
+                'Belum ada pembayaran diterima',
                 style: AppTextStyles.bodyMuted,
                 textAlign: TextAlign.center,
               ),

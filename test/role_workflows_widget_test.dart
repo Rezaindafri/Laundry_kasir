@@ -43,6 +43,7 @@ class _AuditAuthRepository implements AuthRepository {
 class _AuditMasterRepository implements MasterDataRepository {
   final List<CustomerEntity> customers = [];
   int saves = 0;
+  int deletes = 0;
 
   @override
   Future<Result<List<CustomerEntity>>> getCustomers() async =>
@@ -57,7 +58,11 @@ class _AuditMasterRepository implements MasterDataRepository {
   }
 
   @override
-  Future<Result<void>> deleteCustomer(String id) async => const Success(null);
+  Future<Result<void>> deleteCustomer(String id) async {
+    deletes++;
+    customers.removeWhere((customer) => customer.id == id);
+    return const Success(null);
+  }
 
   @override
   Future<Result<List<LaundryServiceEntity>>> getServices() async =>
@@ -116,6 +121,44 @@ Future<void> _openQuickCustomerForm(
 }
 
 void main() {
+  testWidgets('customer deletion waits for explicit confirmation', (tester) async {
+    final repository = _AuditMasterRepository()
+      ..customers.add(const CustomerEntity(id: 'existing', name: 'Pelanggan lama'));
+    final owner = UserEntity(id: 'owner', name: 'Owner', username: 'owner',
+        role: UserRole.owner, isActive: true, createdAt: DateTime(2026));
+    await tester.pumpWidget(ProviderScope(overrides: [
+      authRepositoryProvider.overrideWithValue(_AuditAuthRepository(user: owner)),
+      masterDataRepositoryProvider.overrideWithValue(repository),
+    ], child: const MaterialApp(home: CustomersScreen())));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('Pelanggan lama'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hapus pelanggan?'), findsOneWidget);
+    expect(repository.deletes, 0);
+    await tester.tap(find.text('Batal'));
+    await tester.pumpAndSettle();
+    expect(repository.deletes, 0);
+    expect(find.text('Pelanggan lama'), findsOneWidget);
+    await tester.longPress(find.text('Pelanggan lama'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Hapus'));
+    await tester.pumpAndSettle();
+    expect(repository.deletes, 1);
+    expect(find.text('Pelanggan lama'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty quick customer sheet closes normally without a dialog', (tester) async {
+    final repository = _AuditMasterRepository();
+    await _openQuickCustomerForm(tester, repository);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Batalkan perubahan?'), findsNothing);
+    expect(find.text('Pelanggan Baru'), findsNothing);
+    expect(repository.saves, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final failure in [
     const UnauthorizedFailure('Username atau password salah.'),
     const ServerFailure('Akun dinonaktifkan.'),
@@ -158,9 +201,12 @@ void main() {
     await tester.enterText(find.byType(TextFormField).first, 'Not saved');
     await tester.tapAt(const Offset(10, 100));
     await tester.pumpAndSettle();
+    expect(find.text('Batalkan perubahan?'), findsOneWidget);
+    await tester.tap(find.text('Ya, batalkan'));
+    await tester.pumpAndSettle();
     expect(find.text('Pelanggan Baru'), findsNothing);
     expect(
-      find.text('Data pelanggan saat ini belum tersedia.'),
+      find.text('Pelanggan belum tersedia'),
       findsOneWidget,
     );
     expect(repository.saves, 0);
@@ -173,6 +219,9 @@ void main() {
     await _openQuickCustomerForm(tester, repository);
     await tester.enterText(find.byType(TextFormField).first, 'Not saved');
     await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Batalkan perubahan?'), findsOneWidget);
+    await tester.tap(find.text('Ya, batalkan'));
     await tester.pumpAndSettle();
     expect(find.text('Pelanggan Baru'), findsNothing);
     expect(repository.saves, 0);

@@ -201,6 +201,9 @@ void main() {
     await tester.tap(find.descendant(
         of: firstCard, matching: find.byTooltip('Hapus layanan dari bon')));
     await tester.pumpAndSettle();
+    expect(find.text('Hapus layanan dari bon?'), findsOneWidget);
+    await tester.tap(find.text('Hapus layanan'));
+    await tester.pumpAndSettle();
     expect(find.text('Layanan 2'), findsNothing);
     expect(find.text('Setrika'), findsOneWidget);
     expect(tester.widget<TextFormField>(_quantity(0)).controller!.text, '4');
@@ -276,6 +279,9 @@ void main() {
     await _reveal(tester, firstCard);
     await tester.tap(find.descendant(
         of: firstCard, matching: find.byTooltip('Hapus layanan dari bon')));
+    await tester.pumpAndSettle();
+    expect(find.text('Hapus layanan dari bon?'), findsOneWidget);
+    await tester.tap(find.text('Hapus layanan'));
     await tester.pumpAndSettle();
     await _reveal(tester, _paymentAmount);
     expect(_amountText(tester), '37500');

@@ -6,6 +6,7 @@ import '../../../../core/error/failures.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/navigation_write_guard.dart';
 import '../../../../core/widgets/safe_modal_sheet.dart';
+import '../../../../core/widgets/unsaved_changes_guard.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
 import '../../../../shared/enums/user_role.dart';
@@ -82,7 +83,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       body: customers.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => _ErrorState(
-            message: 'Data pelanggan gagal dimuat: $error',
+            message: 'Gagal memuat pelanggan',
             onRetry: () => ref.read(customersProvider.notifier).refresh()),
         data: (items) => RefreshIndicator(
           onRefresh: () => ref.read(customersProvider.notifier).refresh(),
@@ -95,11 +96,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     Icon(Icons.people_outline,
                         size: 48, color: AppColors.textSecondary),
                     SizedBox(height: 12),
-                    Text('Data pelanggan saat ini belum tersedia.',
+                    Text('Pelanggan belum tersedia',
                         textAlign: TextAlign.center),
                     SizedBox(height: 6),
                     Text(
-                      'Tambahkan pelanggan untuk mulai membuat transaksi.',
+                      'Tambahkan pelanggan pertama',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.textSecondary),
                     ),
@@ -163,6 +164,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
+      enableDrag: false,
       builder: (_) => _CustomerFormSheet(customer: customer),
     );
     _formOpen = false;
@@ -232,6 +234,12 @@ class _CustomerFormSheetState extends State<_CustomerFormSheet> {
   late final TextEditingController _address;
   CustomerGender? _gender;
 
+  bool get _hasChanges =>
+      _name.text != (widget.customer?.name ?? '') ||
+      _phone.text != (widget.customer?.phone ?? '') ||
+      _address.text != (widget.customer?.address ?? '') ||
+      _gender != widget.customer?.gender;
+
   @override
   void initState() {
     super.initState();
@@ -267,7 +275,10 @@ class _CustomerFormSheetState extends State<_CustomerFormSheet> {
   Widget build(BuildContext context) {
     final keyboardInset =
         MediaQuery.viewInsetsOf(context).bottom.clamp(0.0, 360.0).toDouble();
-    return AnimatedPadding(
+    return UnsavedChangesGuard(
+      hasUnsavedChanges: () => _hasChanges,
+      listenables: [_name, _phone, _address],
+      child: AnimatedPadding(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
       padding: EdgeInsets.only(bottom: keyboardInset),
@@ -335,7 +346,7 @@ class _CustomerFormSheetState extends State<_CustomerFormSheet> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

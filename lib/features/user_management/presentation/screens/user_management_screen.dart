@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/unsaved_changes_guard.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/config/theme/app_colors.dart';
@@ -235,6 +236,13 @@ Future<void> _showUserForm(
     context: context,
     isScrollControlled: true,
     controllers: [name, username, password],
+    hasUnsavedChanges: () =>
+        name.text != (user?.name ?? '') ||
+        username.text != (user?.username ?? '') ||
+        password.text.isNotEmpty ||
+        role != (user?.role ?? initialRole ?? UserRole.kasir) ||
+        ownerId != user?.ownerId,
+    discardListenables: [name, username, password],
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setState) => SafeArea(
         child: SingleChildScrollView(
@@ -361,7 +369,19 @@ Future<void> _showUserForm(
                 if (user != null) ...[
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
+                      final changed = name.text != user.name ||
+                          role != user.role || ownerId != user.ownerId;
+                      if (changed) {
+                        final discard = await showActionConfirmation(
+                          context: sheetContext,
+                          title: 'Batalkan perubahan?',
+                          message: 'Perubahan akun yang belum disimpan akan hilang saat membuka pengelolaan kredensial. Apakah Anda yakin?',
+                          confirmLabel: 'Ya, lanjutkan',
+                          cancelLabel: 'Lanjut mengisi',
+                        );
+                        if (!discard || !sheetContext.mounted) return;
+                      }
                       // Tunggu bottom sheet ini selesai tertutup sebelum
                       // membuka sheet kredensial. Dua sheet yang bertumpuk
                       // dapat meninggalkan dependents widget yang belum lepas.
@@ -429,6 +449,15 @@ Future<void> _toggleStatus(
   WidgetRef ref,
   UserEntity user,
 ) async {
+  final confirmed = await showActionConfirmation(
+    context: context,
+    title: user.isActive ? 'Nonaktifkan akun?' : 'Aktifkan akun?',
+    message: user.isActive
+        ? '${user.name} tidak dapat login setelah dinonaktifkan. Data operasionalnya tetap tersimpan. Apakah Anda yakin?'
+        : 'Akun ${user.name} akan dapat login kembali. Apakah Anda yakin?',
+    confirmLabel: user.isActive ? 'Nonaktifkan' : 'Aktifkan',
+  );
+  if (!confirmed || !context.mounted) return;
   final result = await withNavigationWriteLock(ref,
       () => ref.read(managedUsersProvider.notifier).toggleUserStatus(user.id));
   if (!context.mounted) return;
@@ -476,6 +505,11 @@ Future<void> _showCredentialEditor(
       username,
       newPassword
     ],
+    hasUnsavedChanges: () =>
+        name.text != user.name || username.text != user.username ||
+        newPassword.text.isNotEmpty || managerPassword.text.isNotEmpty ||
+        managerUsername.text != (ref.read(sessionProvider).valueOrNull?.username ?? ''),
+    discardListenables: [managerUsername, managerPassword, name, username, newPassword],
     builder: (sheetContext) => SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(

@@ -122,9 +122,16 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   void didUpdateWidget(covariant _SettingsForm oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Apply refreshed server values only to untouched fields, never a draft.
-    if (_name.text == oldWidget.value.businessName) _name.text = widget.value.businessName;
+    if (_name.text == oldWidget.value.businessName)
+      _name.text = widget.value.businessName;
     if (_phone.text == oldWidget.value.phone) _phone.text = widget.value.phone;
-    if (_address.text == oldWidget.value.address) _address.text = widget.value.address;
+    if (_address.text == oldWidget.value.address)
+      _address.text = widget.value.address;
+    if (_paper == oldWidget.value.paperSize) _paper = widget.value.paperSize;
+    if (_printerMac == oldWidget.value.defaultPrinter) {
+      _printerMac = widget.value.defaultPrinter;
+      _printerName = widget.value.defaultPrinterName;
+    }
   }
 
   @override
@@ -147,6 +154,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   }
 
   Future<void> _choosePrinter() async {
+    if (_loadingPrinters || !isCurrentPage(context)) return;
     setState(() => _loadingPrinters = true);
     try {
       final devices =
@@ -158,38 +166,74 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
                 'Tidak ada printer Bluetooth yang telah dipasangkan di perangkat ini.')));
         return;
       }
+      // Device discovery has finished. Do not animate a loading spinner behind
+      // an already loaded picker while waiting for the user's selection.
+      setState(() => _loadingPrinters = false);
       final selected = await showModalBottomSheet<PrinterDevice>(
         context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .75,
+        ),
         builder: (sheetContext) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const ListTile(title: Text('Pilih printer Bluetooth')),
-              ...devices.map((device) => ListTile(
-                    leading: const Icon(Icons.print_outlined),
-                    title: Text(device.name.isEmpty
-                        ? 'Printer tanpa nama'
-                        : device.name),
-                    subtitle: Text(device.macAddress),
-                    trailing: device.macAddress == _printerMac
-                        ? const Icon(Icons.check, color: Colors.green)
-                        : null,
-                    onTap: () => Navigator.pop(sheetContext, device),
-                  )),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: devices.length,
+                  itemBuilder: (_, index) {
+                    final device = devices[index];
+                    return ListTile(
+                      leading: const Icon(Icons.print_outlined),
+                      title: Text(device.name.isEmpty
+                          ? 'Printer tanpa nama'
+                          : device.name),
+                      subtitle: Text(device.macAddress),
+                      trailing: device.macAddress == _printerMac
+                          ? const Icon(Icons.check, color: Colors.green)
+                          : null,
+                      onTap: () => Navigator.pop(sheetContext, device),
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         ),
       );
-      if (selected != null) {
+      if (selected != null && mounted) {
+        await withNavigationWriteLock(
+          ref,
+          () => ref.read(laundrySettingsProvider.notifier).saveDeviceSettings(
+                widget.value.copyWith(
+                  defaultPrinter: selected.macAddress,
+                  defaultPrinterName: selected.name,
+                ),
+              ),
+        );
+        if (!mounted) return;
         setState(() {
           _printerMac = selected.macAddress;
           _printerName = selected.name;
         });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Printer tersimpan untuk perangkat ini.'),
+        ));
       }
     } on PrinterException catch (error) {
       if (mounted)
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Printer gagal disimpan. Silakan coba lagi.'),
+        ));
+      }
     } finally {
       if (mounted) setState(() => _loadingPrinters = false);
     }
@@ -244,16 +288,19 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
         const SizedBox(height: 24),
         Text('Informasi Usaha', style: Theme.of(context).textTheme.titleMedium),
         if (canManageBusiness)
-          Card(child: ListTile(leading: const Icon(Icons.account_balance_wallet_outlined),
-              title: const Text('Tujuan pembayaran'),
-              subtitle: const Text('QRIS usaha dan rekening transfer bank'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => const PaymentDestinationsScreen())))),
+          Card(
+              child: ListTile(
+                  leading: const Icon(Icons.account_balance_wallet_outlined),
+                  title: const Text('Tujuan pembayaran'),
+                  subtitle: const Text('QRIS dan rekening bank'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                          builder: (_) => const PaymentDestinationsScreen())))),
         if (!canManageBusiness) ...[
           const SizedBox(height: 4),
           Text(
-            'Informasi usaha dikelola oleh owner.',
+            'Dikelola oleh Owner',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
@@ -297,8 +344,8 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
                           ? _printerName!
                           : 'Printer Bluetooth'),
                   subtitle: Text(_printerMac == null || _printerMac!.isEmpty
-                      ? 'Pilih printer untuk digunakan aplikasi ini'
-                      : 'Dipilih untuk aplikasi ini • $_printerMac'),
+                      ? 'Pilih printer aplikasi'
+                      : 'Printer tersimpan • $_printerMac'),
                 ),
               ),
               Align(
@@ -407,6 +454,10 @@ class _ProfileSection extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       controllers: [name, username],
+      hasUnsavedChanges: () =>
+          name.text != user.name ||
+          (canChangeUsername && username.text != user.username),
+      discardListenables: [name, username],
       builder: (sheetContext) => SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           24,
@@ -497,6 +548,11 @@ class _ProfileSection extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       controllers: [currentPassword, password, confirmation],
+      hasUnsavedChanges: () =>
+          currentPassword.text.isNotEmpty ||
+          password.text.isNotEmpty ||
+          confirmation.text.isNotEmpty,
+      discardListenables: [currentPassword, password, confirmation],
       builder: (sheetContext) => SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           24,
@@ -678,7 +734,7 @@ class _BackupRestoreSectionState extends ConsumerState<_BackupRestoreSection> {
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(
-            'Hanya identitas usaha yang dibackup; pelanggan dan transaksi tidak termasuk.',
+            'Hanya konfigurasi usaha',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 10),

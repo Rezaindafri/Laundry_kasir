@@ -28,12 +28,29 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   );
 
   bool _isExporting = false;
-  _ReportPeriod _selectedPeriod = _ReportPeriod.today;
-  String? _selectedCashierId;
+  String? get _selectedCashierId =>
+      ref.read(reportsOverviewProvider.notifier).cashierId;
+
+  _ReportPeriod get _selectedPeriod {
+    final range = ref.read(reportsOverviewProvider.notifier).range;
+    final now = BusinessTime.calendarNow();
+    final today = DateTime(now.year, now.month, now.day);
+    final end = DateTime(range.end.year, range.end.month, range.end.day);
+    if (end != today) return _ReportPeriod.custom;
+    if (range.start == today) return _ReportPeriod.today;
+    if (range.start == today.subtract(const Duration(days: 6)))
+      return _ReportPeriod.week;
+    if (range.start == DateTime(now.year, now.month))
+      return _ReportPeriod.month;
+    return _ReportPeriod.custom;
+  }
 
   @override
   Widget build(BuildContext context) {
     final overview = ref.watch(reportsOverviewProvider);
+    final controller = ref.read(reportsOverviewProvider.notifier);
+    final range = controller.range;
+    final accounts = controller.accounts;
     final user = ref.watch(sessionProvider).valueOrNull;
 
     return Scaffold(
@@ -42,232 +59,248 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         title: const Text('Laporan'),
         automaticallyImplyLeading: true,
       ),
-      body: overview.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _ErrorState(
-          message: _errorMessage(error),
-          onRetry: () => ref.read(reportsOverviewProvider.notifier).refresh(),
-        ),
-        data: (data) => RefreshIndicator(
-          onRefresh: () => ref.read(reportsOverviewProvider.notifier).refresh(),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Laporan Owner',
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                  TextButton.icon(
-                    onPressed: _selectRange,
-                    icon: const Icon(Icons.date_range_outlined, size: 18),
-                    label: const Text('Periode'),
-                  ),
-                ],
-              ),
-              Text(
-                '${DateFormat('d MMM y', 'id_ID').format(data.startDate)} – ${DateFormat('d MMM y', 'id_ID').format(data.endDate)}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _ReportPeriod.values
-                    .map(
-                      (period) => ChoiceChip(
-                        label: Text(period.label),
-                        selected: period == _selectedPeriod,
-                        onSelected: (_) => _applyPeriod(period),
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(reportsOverviewProvider.notifier).refresh(),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Laporan Owner',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                TextButton.icon(
+                  onPressed: _selectRange,
+                  icon: const Icon(Icons.date_range_outlined, size: 18),
+                  label: const Text('Periode'),
+                ),
+              ],
+            ),
+            Text(
+              '${DateFormat('d MMM y', 'id_ID').format(range.start)} – ${DateFormat('d MMM y', 'id_ID').format(range.end)}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _ReportPeriod.values
+                  .map(
+                    (period) => ChoiceChip(
+                      label: Text(period.label),
+                      selected: period == _selectedPeriod,
+                      onSelected: (_) => period == _ReportPeriod.custom
+                          ? _selectRange()
+                          : _applyPeriod(period),
+                    ),
+                  )
+                  .toList(),
+            ),
+            Text('Periode dan waktu laporan menggunakan WIB (UTC+7).',
+                style: Theme.of(context).textTheme.bodySmall),
+            if (accounts.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('User / Kasir',
+                  style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: const Text('Semua'),
+                        selected: _selectedCashierId == null,
+                        onSelected: (_) => _setCashier(null),
                       ),
-                    )
-                    .toList(),
-              ),
-              Text('Periode dan waktu laporan menggunakan WIB (UTC+7).',
-                  style: Theme.of(context).textTheme.bodySmall),
-              if (data.accounts.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text('User / Kasir',
-                    style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 38,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
+                    ),
+                    for (final account in accounts)
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: FilterChip(
-                          label: const Text('Semua'),
-                          selected: _selectedCashierId == null,
-                          onSelected: (_) => _setCashier(null),
+                          label: Text(account.label),
+                          selected: _selectedCashierId == account.id,
+                          onSelected: (_) => _setCashier(account.id),
                         ),
                       ),
-                      for (final account in data.accounts)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(account.label),
-                            selected: _selectedCashierId == account.id,
-                            onSelected: (_) => _setCashier(account.id),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 18),
-              _TodayPaymentHero(
-                amount: data.paymentsReceived,
-                paymentCount: data.paymentCount,
-              ),
-              const SizedBox(height: 14),
-              _PaymentTrendChart(points: data.chart, endDate: data.endDate),
-              const SizedBox(height: 14),
-              _PaymentMethodCard(
-                cash: data.cashPayments,
-                qris: data.qrisPayments,
-                transfer: data.transferPayments,
-              ),
-              const SizedBox(height: 20),
-              _ReportCard(
-                label: 'Nilai pesanan',
-                subtitle: '${data.orderCount} pesanan dibuat pada periode ini',
-                value: _currency.format(data.orderValue),
-                icon: Icons.receipt_long_outlined,
-              ),
-              const SizedBox(height: 10),
-              _ReportCard(
-                label: 'Pembayaran diterima',
-                subtitle: 'Berdasarkan tanggal pembayaran dicatat',
-                value: _currency.format(data.paymentsReceived),
-                icon: Icons.payments_outlined,
-              ),
-              const SizedBox(height: 10),
-              _ReportCard(
-                label: 'Tagihan belum lunas',
-                subtitle: 'Sisa tagihan dari pesanan periode ini',
-                value: _currency.format(data.outstandingAmount),
-                icon: Icons.account_balance_wallet_outlined,
-              ),
-              const SizedBox(height: 10),
-              _ReportCard(
-                label: 'Pengeluaran',
-                subtitle: '${data.expenseCount} catatan pada periode ini',
-                value: _currency.format(data.expensesTotal),
-                icon: Icons.trending_down_outlined,
-              ),
-              const SizedBox(height: 10),
-              _ReportCard(
-                label: 'Arus kas bersih',
-                subtitle: 'Pembayaran diterima dikurangi pengeluaran',
-                value: _currency.format(data.netCash),
-                icon: Icons.account_balance_outlined,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Operasional',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Status pesanan yang dibuat pada periode terpilih.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: Column(
-                  children: [
-                    _ReportRow(
-                      icon: Icons.receipt_long_outlined,
-                      label: 'Pesanan masuk',
-                      value: '${data.ordersReceived}',
-                    ),
-                    const Divider(height: 1),
-                    _ReportRow(
-                      icon: Icons.local_laundry_service_outlined,
-                      label: 'Laundry diproses',
-                      value: '${data.inProgress}',
-                    ),
-                    const Divider(height: 1),
-                    _ReportRow(
-                      icon: Icons.inventory_2_outlined,
-                      label: 'Selesai',
-                      value: '${data.completed}',
-                    ),
-                    const Divider(height: 1),
-                    _ReportRow(
-                      icon: Icons.warning_amber_outlined,
-                      label: 'Terlambat',
-                      value: '${data.late}',
-                    ),
-                    const Divider(height: 1),
-                    _ReportRow(
-                      icon: Icons.inventory_2_outlined,
-                      label: 'Belum diambil',
-                      value: '${data.readyToPickup}',
-                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-              Text(
-                'Layanan terlaris',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              _BestSellerCard(services: data.services),
-              const SizedBox(height: 24),
-              Text('Rincian pembayaran',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              _PaymentList(items: data.payments),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Rincian pengeluaran',
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                  TextButton(
-                    onPressed: () => context.push(AppRoutes.expenses),
-                    child: const Text('Kelola'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              _ExpenseList(items: data.expenses),
-              const SizedBox(height: 24),
-              Text('Tagihan belum lunas',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              _OutstandingList(items: data.outstandingItems),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () => context.push(AppRoutes.auditLogs),
-                icon: const Icon(Icons.history_edu_outlined),
-                label: const Text('Riwayat Perubahan'),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: _isExporting ? null : _exportCsv,
-                icon: _isExporting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.file_download_outlined),
-                label: Text(
-                  _isExporting
-                      ? 'Menyiapkan CSV...'
-                      : 'Export CSV periode aktif',
-                ),
-              ),
             ],
-          ),
+            const SizedBox(height: 18),
+            ...overview.when<List<Widget>>(
+              // A new filter must never show the previous filter's numbers.
+              skipLoadingOnRefresh: false,
+              skipLoadingOnReload: false,
+              loading: () => const [
+                LinearProgressIndicator(),
+                Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Menyiapkan laporan…')),
+              ],
+              error: (error, _) => [
+                _ErrorState(
+                  message: _errorMessage(error),
+                  onRetry: () => controller.refresh(),
+                )
+              ],
+              data: (data) => [
+                _TodayPaymentHero(
+                  amount: data.paymentsReceived,
+                  paymentCount: data.paymentCount,
+                ),
+                const SizedBox(height: 14),
+                _PaymentTrendChart(points: data.chart, endDate: data.endDate),
+                const SizedBox(height: 14),
+                _PaymentMethodCard(
+                  cash: data.cashPayments,
+                  qris: data.qrisPayments,
+                  transfer: data.transferPayments,
+                ),
+                const SizedBox(height: 20),
+                _ReportCard(
+                  label: 'Nilai pesanan',
+                  subtitle:
+                      '${data.orderCount} pesanan dibuat pada periode ini',
+                  value: _currency.format(data.orderValue),
+                  icon: Icons.receipt_long_outlined,
+                ),
+                const SizedBox(height: 10),
+                _ReportCard(
+                  label: 'Pembayaran diterima',
+                  subtitle: 'Berdasarkan tanggal pembayaran dicatat',
+                  value: _currency.format(data.paymentsReceived),
+                  icon: Icons.payments_outlined,
+                ),
+                const SizedBox(height: 10),
+                _ReportCard(
+                  label: 'Tagihan belum lunas',
+                  subtitle: 'Sisa tagihan dari pesanan periode ini',
+                  value: _currency.format(data.outstandingAmount),
+                  icon: Icons.account_balance_wallet_outlined,
+                ),
+                const SizedBox(height: 10),
+                _ReportCard(
+                  label: 'Pengeluaran',
+                  subtitle: '${data.expenseCount} catatan pada periode ini',
+                  value: _currency.format(data.expensesTotal),
+                  icon: Icons.trending_down_outlined,
+                ),
+                const SizedBox(height: 10),
+                _ReportCard(
+                  label: 'Arus kas bersih',
+                  subtitle: 'Pembayaran diterima dikurangi pengeluaran',
+                  value: _currency.format(data.netCash),
+                  icon: Icons.account_balance_outlined,
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Operasional',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Status pesanan yang dibuat pada periode terpilih.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: Column(
+                    children: [
+                      _ReportRow(
+                        icon: Icons.receipt_long_outlined,
+                        label: 'Pesanan masuk',
+                        value: '${data.ordersReceived}',
+                      ),
+                      const Divider(height: 1),
+                      _ReportRow(
+                        icon: Icons.local_laundry_service_outlined,
+                        label: 'Laundry diproses',
+                        value: '${data.inProgress}',
+                      ),
+                      const Divider(height: 1),
+                      _ReportRow(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Selesai',
+                        value: '${data.completed}',
+                      ),
+                      const Divider(height: 1),
+                      _ReportRow(
+                        icon: Icons.warning_amber_outlined,
+                        label: 'Terlambat',
+                        value: '${data.late}',
+                      ),
+                      const Divider(height: 1),
+                      _ReportRow(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Belum diambil',
+                        value: '${data.readyToPickup}',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Layanan terlaris',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                _BestSellerCard(services: data.services),
+                const SizedBox(height: 24),
+                Text('Rincian pembayaran',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                _PaymentList(items: data.payments),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('Rincian pengeluaran',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    TextButton(
+                      onPressed: () => context.push(AppRoutes.expenses),
+                      child: const Text('Kelola'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                _ExpenseList(items: data.expenses),
+                const SizedBox(height: 24),
+                Text('Tagihan belum lunas',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                _OutstandingList(items: data.outstandingItems),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () => context.push(AppRoutes.auditLogs),
+                  icon: const Icon(Icons.history_edu_outlined),
+                  label: const Text('Riwayat Perubahan'),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed:
+                      _isExporting || overview.isLoading ? null : _exportCsv,
+                  icon: _isExporting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.file_download_outlined),
+                  label: Text(
+                    _isExporting
+                        ? 'Menyiapkan CSV...'
+                        : 'Export CSV periode aktif',
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -283,14 +316,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       context: context,
       firstDate: DateTime(2020),
       lastDate: now,
-      initialDateRange: DateTimeRange(
-        start: DateTime(now.year, now.month, now.day),
-        end: now,
-      ),
+      initialDateRange: ref.read(reportsOverviewProvider.notifier).range,
       helpText: 'Pilih periode laporan',
     );
-    if (selected != null) {
-      setState(() => _selectedPeriod = _ReportPeriod.custom);
+    if (selected != null && mounted) {
       await ref.read(reportsOverviewProvider.notifier).setRange(selected);
     }
   }
@@ -307,12 +336,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         DateTimeRange(start: DateTime(now.year, now.month), end: now),
       _ReportPeriod.custom => throw StateError('Periode kustom dipilih'),
     };
-    setState(() => _selectedPeriod = period);
     await ref.read(reportsOverviewProvider.notifier).setRange(range);
   }
 
   Future<void> _setCashier(String? cashierId) async {
-    setState(() => _selectedCashierId = cashierId);
     await ref.read(reportsOverviewProvider.notifier).setCashier(cashierId);
   }
 

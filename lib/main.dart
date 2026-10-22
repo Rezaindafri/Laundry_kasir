@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/config/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
 import 'core/router/app_router.dart';
+import 'core/network/dio_client.dart';
+import 'core/widgets/request_failure_listener.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 
 Future<void> main() async {
@@ -30,6 +32,8 @@ Future<void> main() async {
 class LaundryApp extends ConsumerWidget {
   const LaundryApp({super.key});
 
+  static final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
@@ -38,6 +42,7 @@ class LaundryApp extends ConsumerWidget {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      scaffoldMessengerKey: _messengerKey,
       routerConfig: router,
       builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
         value: const SystemUiOverlayStyle(
@@ -46,7 +51,11 @@ class LaundryApp extends ConsumerWidget {
           systemNavigationBarDividerColor: Colors.black,
           systemNavigationBarContrastEnforced: false,
         ),
-        child: child ?? const SizedBox.shrink(),
+        child: RequestFailureListener(
+          events: DioClient().requestFailureEvents,
+          messengerKey: _messengerKey,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
     );
   }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'unsaved_changes_guard.dart';
+
 /// A route can still be mounted while it is closing or covered by another one.
 /// Never submit a form (or open its next popup) from that stale page.
 bool isCurrentPage(BuildContext context) =>
@@ -14,8 +16,11 @@ Future<T?> showSafeModalBottomSheet<T>({
   bool isScrollControlled = false,
   bool useRootNavigator = false,
   bool useSafeArea = false,
+  bool enableDrag = true,
   bool? showDragHandle,
   List<TextEditingController> controllers = const [],
+  bool Function()? hasUnsavedChanges,
+  List<Listenable> discardListenables = const [],
 }) async {
   ModalRoute<T>? route;
   try {
@@ -24,10 +29,18 @@ Future<T?> showSafeModalBottomSheet<T>({
       isScrollControlled: isScrollControlled,
       useRootNavigator: useRootNavigator,
       useSafeArea: useSafeArea,
+      enableDrag: enableDrag && hasUnsavedChanges == null,
       showDragHandle: showDragHandle,
       builder: (sheetContext) {
         route = ModalRoute.of<T>(sheetContext);
-        return builder(sheetContext);
+        final child = builder(sheetContext);
+        return hasUnsavedChanges == null
+            ? child
+            : UnsavedChangesGuard(
+                hasUnsavedChanges: hasUnsavedChanges,
+                listenables: discardListenables,
+                child: child,
+              );
       },
     );
     // A pop result arrives while TextFields are still mounted during reverse.

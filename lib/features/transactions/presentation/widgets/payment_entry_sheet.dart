@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/unsaved_changes_guard.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
@@ -48,6 +49,7 @@ class _PaymentEntrySheetState extends State<PaymentEntrySheet> {
   late final TextEditingController _note;
   late PaymentMethod _method;
   int? _destinationId;
+  int? _initialDestinationId;
 
   @override
   void initState() {
@@ -58,6 +60,7 @@ class _PaymentEntrySheetState extends State<PaymentEntrySheet> {
     _note = TextEditingController(text: widget.previous?.note);
     _method = widget.previous?.method ?? widget.method;
     _destinationId = widget.previous?.destinationId;
+    _initialDestinationId = _destinationId;
   }
 
   @override
@@ -68,7 +71,15 @@ class _PaymentEntrySheetState extends State<PaymentEntrySheet> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) => UnsavedChangesGuard(
+      hasUnsavedChanges: () =>
+          _amount.text != (widget.previous?.amount.toString() ??
+              (widget.forCollection ? widget.minimum : widget.maximum).toString()) ||
+          _note.text != (widget.previous?.note ?? '') ||
+          _destinationId != _initialDestinationId ||
+          _method != (widget.previous?.method ?? widget.method),
+      listenables: [_amount, _note],
+      child: SafeArea(
           child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
             24, 24, 24, 24 + MediaQuery.viewInsetsOf(context).bottom),
@@ -85,15 +96,16 @@ class _PaymentEntrySheetState extends State<PaymentEntrySheet> {
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   Text(widget.forCollection
-                      ? 'DP yang sudah masuk diperhitungkan. Pembayaran minimum ${_currency.format(widget.minimum)}; sisa seluruh tagihan ${_currency.format(widget.maximum)}.'
-                      : 'Sisa tagihan ${_currency.format(widget.maximum)}. Catat uang yang diterima sekarang, bukan total pembayaran sebelumnya. Barang tidak otomatis diambil.'),
+                      ? 'Minimum: ${_currency.format(widget.minimum)}\nSisa tagihan: ${_currency.format(widget.maximum)}'
+                      : 'Sisa tagihan: ${_currency.format(widget.maximum)}'),
+                  if (!widget.forCollection) const Text('Pembayaran tanpa pengambilan'),
                   const SizedBox(height: 16),
                   PaymentAmountField(
                       controller: _amount,
                       readOnly: widget.maximum == 0,
                       helperText: widget.maximum == 0
-                          ? 'Sudah lunas; tidak ada pembayaran tambahan.'
-                          : 'Nominal terisi otomatis. Ketik untuk menggantinya.',
+                          ? 'Pembayaran sudah lunas'
+                          : 'Otomatis; ketik untuk mengganti',
                       validator: (value) {
                         final amount = int.tryParse(value?.trim() ?? '');
                         return amount == null ||
@@ -117,7 +129,12 @@ class _PaymentEntrySheetState extends State<PaymentEntrySheet> {
                       })),
                   PaymentDestinationPicker(method: _method, value: _destinationId,
                       requiredForPayment: widget.maximum > 0,
-                      onChanged: (id) => setState(() => _destinationId = id)),
+                      onChanged: (id) => setState(() {
+                        if (_method == (widget.previous?.method ?? widget.method)) {
+                          _initialDestinationId ??= id;
+                        }
+                        _destinationId = id;
+                      })),
                   const SizedBox(height: 12),
                   TextFormField(
                       controller: _note,
@@ -151,5 +168,5 @@ class _PaymentEntrySheetState extends State<PaymentEntrySheet> {
                           ? 'Konfirmasi Pengambilan'
                           : 'Catat Pembayaran')),
                 ])),
-      ));
+      )));
 }

@@ -363,20 +363,21 @@ void main() {
       'payment modal returns arbitrary partial amount and note; dismiss is safe',
       (tester) async {
     PaymentEntry? entry;
-    await tester.pumpWidget(MaterialApp(
-        home: Builder(
-            builder: (context) => Scaffold(
-                body: TextButton(
-                    onPressed: () async {
-                      entry = await showModalBottomSheet<PaymentEntry>(
-                          context: context,
-                          isScrollControlled: true,
-                          builder: (_) => const PaymentEntrySheet(
-                              minimum: 1,
-                              maximum: 60000,
-                              method: PaymentMethod.cash));
-                    },
-                    child: const Text('Bayar Saja'))))));
+    await tester.pumpWidget(ProviderScope(
+        child: MaterialApp(
+            home: Builder(
+                builder: (context) => Scaffold(
+                    body: TextButton(
+                        onPressed: () async {
+                          entry = await showModalBottomSheet<PaymentEntry>(
+                              context: context,
+                              isScrollControlled: true,
+                              builder: (_) => const PaymentEntrySheet(
+                                  minimum: 1,
+                                  maximum: 60000,
+                                  method: PaymentMethod.cash));
+                        },
+                        child: const Text('Bayar Saja')))))));
     await tester.tap(find.text('Bayar Saja'));
     await tester.pumpAndSettle();
     expect(
@@ -415,6 +416,11 @@ void main() {
     expect(find.text('10/10 16:00 WIB'), findsOneWidget);
     expect(find.text('10/10 18:00 WIB'), findsOneWidget);
     expect(find.text('Sisa tagihan'), findsOneWidget);
+    expect(
+        find.text(
+            'Tunjukkan bon ini saat melakukan pengambilan/pembayaran transaksi.\nTerima kasih.'),
+        findsOneWidget);
+    expect(find.textContaining('pengambilan laundry.'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -429,5 +435,10 @@ void main() {
     expect(receipt, contains('10/10/26 16:00'));
     expect(receipt, contains('10/10/26 18:00'));
     expect(receipt, contains('Sisa'));
+    expect(
+        receipt.replaceAll('\n', ' '),
+        contains(
+            'Tunjukkan bon ini saat melakukan pengambilan/pembayaran transaksi.'));
+    expect(receipt, isNot(contains('pengambilan laundry.')));
   });
 }

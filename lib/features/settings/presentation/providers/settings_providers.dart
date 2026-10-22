@@ -44,31 +44,47 @@ final laundrySettingsProvider =
 );
 
 class LaundrySettingsNotifier extends AsyncNotifier<LaundrySettings> {
+  LaundrySettings _withDeviceSettings(
+    LaundrySettings business,
+    LaundrySettings device,
+  ) =>
+      LaundrySettings(
+        businessName: business.businessName,
+        phone: business.phone,
+        address: business.address,
+        paperSize: device.paperSize,
+        defaultPrinter: device.defaultPrinter,
+        defaultPrinterName: device.defaultPrinterName,
+      );
+
   Future<void> refresh() async {
-    final current = state.valueOrNull;
+    final ownerScopeId = ref.read(currentOperationalOwnerScopeIdProvider);
     try {
-      final remote = await ref.read(settingsRemoteDataSourceProvider).getSettings();
-      if (current != null) {
-        state = AsyncData(remote.copyWith(paperSize: current.paperSize,
-          defaultPrinter: current.defaultPrinter, defaultPrinterName: current.defaultPrinterName));
-      } else { state = AsyncData(remote); }
+      final remote =
+          await ref.read(settingsRemoteDataSourceProvider).getSettings();
+      if (ownerScopeId != ref.read(currentOperationalOwnerScopeIdProvider)) {
+        return;
+      }
+      final device =
+          ref.read(settingsRepositoryProvider).load(ownerId: ownerScopeId);
+      state = AsyncData(_withDeviceSettings(remote, device));
     } catch (_) {
       // Do not discard an unsaved settings form when connectivity is lost.
     }
   }
+
   @override
   Future<LaundrySettings> build() async {
     final ownerScopeId = ref.watch(currentOperationalOwnerScopeIdProvider);
-    final local = ref.read(settingsRepositoryProvider).load(ownerId: ownerScopeId);
+    final local =
+        ref.read(settingsRepositoryProvider).load(ownerId: ownerScopeId);
     try {
       final remote =
           await ref.read(settingsRemoteDataSourceProvider).getSettings();
-      final merged = remote.copyWith(
-        paperSize: local.paperSize,
-        defaultPrinter: local.defaultPrinter,
-        defaultPrinterName: local.defaultPrinterName,
-      );
-      await ref.read(settingsRepositoryProvider).save(merged, ownerId: ownerScopeId);
+      final merged = _withDeviceSettings(remote, local);
+      await ref
+          .read(settingsRepositoryProvider)
+          .save(merged, ownerId: ownerScopeId);
       return merged;
     } catch (_) {
       return local;
@@ -82,19 +98,23 @@ class LaundrySettingsNotifier extends AsyncNotifier<LaundrySettings> {
         .save(value, ownerId: ownerScopeId);
     final remote =
         await ref.read(settingsRemoteDataSourceProvider).saveSettings(value);
-    state = AsyncData(remote.copyWith(
-      paperSize: value.paperSize,
-      defaultPrinter: value.defaultPrinter,
-      defaultPrinterName: value.defaultPrinterName,
-    ));
+    if (ownerScopeId != ref.read(currentOperationalOwnerScopeIdProvider)) {
+      return;
+    }
+    final device =
+        ref.read(settingsRepositoryProvider).load(ownerId: ownerScopeId);
+    state = AsyncData(_withDeviceSettings(remote, device));
   }
 
   Future<void> saveDeviceSettings(LaundrySettings value) async {
     final ownerScopeId = ref.read(currentOperationalOwnerScopeIdProvider);
-    await ref
-        .read(settingsRepositoryProvider)
-        .save(value, ownerId: ownerScopeId);
-    state = AsyncData(value);
+    await ref.read(settingsRepositoryProvider).saveDeviceSettings(value);
+    if (ownerScopeId != ref.read(currentOperationalOwnerScopeIdProvider)) {
+      return;
+    }
+    final current = state.valueOrNull ??
+        ref.read(settingsRepositoryProvider).load(ownerId: ownerScopeId);
+    state = AsyncData(_withDeviceSettings(current, value));
   }
 
   Future<Uint8List> downloadBackup() =>

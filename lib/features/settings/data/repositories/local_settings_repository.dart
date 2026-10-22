@@ -25,9 +25,16 @@ class LocalSettingsRepository {
         defaultPrinterName: preferences.getString(_printerName),
       );
   Future<void> save(LaundrySettings value, {String? ownerId}) async {
-    await preferences.setString(_businessKey(_name, ownerId), value.businessName);
+    await preferences.setString(
+        _businessKey(_name, ownerId), value.businessName);
     await preferences.setString(_businessKey(_phone, ownerId), value.phone);
     await preferences.setString(_businessKey(_address, ownerId), value.address);
+    await saveDeviceSettings(value);
+  }
+
+  /// Printer and paper belong to this installation, not to an owner or server.
+  /// Saving a printer must not commit an unfinished business-settings form.
+  Future<void> saveDeviceSettings(LaundrySettings value) async {
     await preferences.setString(_paper, value.paperSize);
     if (value.defaultPrinter == null || value.defaultPrinter!.isEmpty) {
       await preferences.remove(_printer);
