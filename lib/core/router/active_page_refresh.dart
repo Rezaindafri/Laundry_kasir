@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/navigation_write_guard.dart';
 import '../widgets/page_visibility_refresh.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
+import '../../features/audit/presentation/providers/audit_refresh_provider.dart';
 import '../../features/dashboard/presentation/providers/dashboard_providers.dart';
 import '../../features/expenses/presentation/providers/expense_providers.dart';
 import '../../features/master_data/presentation/providers/master_data_providers.dart';
@@ -58,6 +59,12 @@ class _ActivePageRefreshState extends ConsumerState<ActivePageRefresh> {
 
   Future<void> _refresh() async {
     if (ref.read(navigationWritesProvider) > 0) return;
+    if (widget.path == '/dashboard' &&
+        ref.read(sessionProvider).valueOrNull?.role.apiValue == 'owner') {
+      // The audit card has its own request lifecycle; a loading dashboard must
+      // not prevent its refresh when returning from another page.
+      ref.read(auditRevisionProvider.notifier).state++;
+    }
     final provider = _provider;
     final value = provider == null ? null : ref.read(provider);
     if (value is AsyncValue && value.isLoading) return;

@@ -2,6 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+/// Keep field-level errors and add a short, visible summary at the top.
+bool validateFormWithNotice(BuildContext context, GlobalKey<FormState> key) {
+  final valid = key.currentState?.validate() ?? false;
+  if (!valid) {
+    TopNotice.maybeOf(context)?.showTopNotice(const SnackBar(
+      content: Text('Periksa isian yang ditandai.'),
+    ));
+  }
+  return valid;
+}
+
 class TopNotice {
   const TopNotice(this._overlay);
 

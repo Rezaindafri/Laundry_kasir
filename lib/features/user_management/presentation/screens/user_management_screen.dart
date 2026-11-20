@@ -343,7 +343,7 @@ Future<void> _showUserForm(
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: () {
-                    if (!formKey.currentState!.validate()) return;
+                    if (!validateFormWithNotice(sheetContext, formKey)) return;
                     Navigator.pop(
                       sheetContext,
                       _UserFormResult(
@@ -580,7 +580,7 @@ Future<void> _showCredentialEditor(
               const SizedBox(height: 20),
               FilledButton.icon(
                 onPressed: () {
-                  if (!formKey.currentState!.validate()) return;
+                  if (!validateFormWithNotice(sheetContext, formKey)) return;
                   Navigator.pop(
                     sheetContext,
                     _CredentialUpdate(

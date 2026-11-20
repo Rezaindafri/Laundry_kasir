@@ -4,6 +4,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/utils/result.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../audit/presentation/providers/audit_refresh_provider.dart';
 import '../../data/datasources/transaction_remote_datasource.dart';
 import '../../data/repositories/mock_transaction_repository.dart';
 import '../../data/repositories/transaction_repository_impl.dart';
@@ -79,6 +80,7 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
 
     switch (result) {
       case Success<TransactionEntity>(:final data):
+        ref.read(auditRevisionProvider.notifier).state++;
         final refreshed =
             await ref.read(transactionRepositoryProvider).getTransactions();
         refreshed.when(
@@ -100,6 +102,7 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
         await ref.read(transactionRepositoryProvider).update(transaction);
     result.when(
       success: (item) {
+        ref.read(auditRevisionProvider.notifier).state++;
         final items = <TransactionEntity>[...(state.valueOrNull ?? [])];
         final index = items.indexWhere((value) => value.id == item.id);
         if (index >= 0) items[index] = item;
@@ -128,6 +131,7 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
         );
     result.when(
       success: (item) {
+        ref.read(auditRevisionProvider.notifier).state++;
         final items = <TransactionEntity>[...(state.valueOrNull ?? [])];
         final index = items.indexWhere((value) => value.id == item.id);
         if (index >= 0) items[index] = item;
@@ -144,6 +148,7 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
         .completeService(id, detailId);
     result.when(
       success: (item) {
+        ref.read(auditRevisionProvider.notifier).state++;
         final items = state.valueOrNull;
         if (items != null) {
           state = AsyncData([
@@ -163,6 +168,7 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
         .delete(id, reason: reason);
     result.when(
       success: (_) {
+        ref.read(auditRevisionProvider.notifier).state++;
         final items =
             (state.valueOrNull ?? []).where((item) => item.id != id).toList();
         state = AsyncData(items);
@@ -187,6 +193,7 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
         requestId: requestId);
     result.when(
         success: (item) {
+          ref.read(auditRevisionProvider.notifier).state++;
           final items = <TransactionEntity>[...(state.valueOrNull ?? [])];
           final index = items.indexWhere((value) => value.id == item.id);
           if (index >= 0) items[index] = item;

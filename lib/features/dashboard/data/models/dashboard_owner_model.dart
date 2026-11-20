@@ -119,7 +119,7 @@ class DashboardOwnerResponse {
   factory DashboardOwnerResponse.fromJson(Map<String, dynamic> json) {
     final chartJson = (json['chart'] as List<dynamic>? ?? const [])
         .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item as Map))
+        .map((item) => Map<String, dynamic>.from(item))
         .toList();
 
     final accounts = (json['accounts'] as List<dynamic>? ?? const [])

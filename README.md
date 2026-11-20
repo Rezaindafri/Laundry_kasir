@@ -2,7 +2,7 @@
 
 Aplikasi kasir dan manajemen operasional berbasis Flutter dengan REST API Laravel. Branding sudah KarsaOne; paket, folder, tabel, dan istilah layanan laundry yang ada dipertahankan agar tidak memutus integrasi/data.
 
-Terakhir diverifikasi: Flutter **21 Oktober 2026**; hasil backend di bawah adalah snapshot pengujian sebelumnya. Backend nyata sudah digunakan, bukan proyek mock-only. Integrasi utama berjalan, tetapi beberapa temuan audit dan verifikasi deployment masih terbuka. Jangan menganggap proyek siap produksi hanya karena tes utama lulus.
+Terakhir diperbarui: **20 November 2026**. Perbaikan status transaksi lama, konsistensi nominal periode, audit dan notifikasi mencakup Flutter serta Laravel. Hasil pengujian dan batas verifikasi tercantum di bawah; bukan klaim seluruh perangkat/hosting sudah terverifikasi.
 
 ## Lokasi dan stack
 
@@ -42,16 +42,20 @@ Fitur yang telah terhubung ke Laravel:
 - Halaman data dimuat ulang saat dibuka/dikunjungi kembali, termasuk perpindahan tab dan Back dari halaman lain. Filter/pencarian/draft tetap dipertahankan; menutup dialog atau bottom sheet tidak memicu reload halaman induk. Ini refresh berbasis navigasi, bukan websocket atau polling background.
 - Detail Transaksi mengambil detail langsung dari Laravel dan menampilkan bagian Bukti pengambilan (pratinjau + foto per layanan) serta Riwayat pembayaran (tanggal, metode, tujuan dan pencatat bila tersedia). Foto yang sudah ada adalah bukti pengambilan, bukan bukti transfer; foto tetap opsional. Data lama tanpa informasi diberi keterangan, tidak ditebak.
 - Estimasi layanan boleh 0/kosong untuk barang tanpa proses: langsung siap, tanpa tenggat keterlambatan. Bon cetak/gambar menampilkan estimasi masing-masing layanan.
-- Status berbasis waktu di backend dan scheduler laundry:sync-statuses.
+- Status berbasis waktu di backend dan scheduler laundry:sync-statuses. Pada data lama tanpa tenggat per layanan, layanan yang belum selesai tetap mengikuti tenggat transaksi meskipun layanan lain diselesaikan manual; query Diproses mengikuti definisi yang sama dengan model/dashboard.
+- Kasir/Owner dapat menyelesaikan proses per layanan melalui konfirmasi, tanpa otomatis melunasi atau mengambil barang. Estimasi asli tetap disimpan. Kasir dapat menghapus transaksi belum dibayar/diambil dalam tiga jam dengan alasan wajib; Owner tidak dibatasi umur tiga jam tetapi perlindungan riwayat keuangan tetap berlaku. Pemeriksaan izin dan audit dilakukan Laravel.
 - Dashboard Owner/Kasir, laporan pembayaran bertanggal, ekspor CSV, filter akun termasuk Me. Laporan memiliki cache respons Laravel/prefetch terbatas per periode dan akun: cache hit langsung tampil, pilihan baru hanya memuat area hasil; respons lama tidak menimpa pilihan/sesi terbaru.
 - Periode laporan memakai WIB; timestamp tetap UTC. Bukti pengambilan diakses melalui API berizin, file baru disimpan privat.
 - Pengeluaran Owner dengan tanggal/waktu pilihan dan rincian laporan; belum ada status rencana/dibayar terpisah.
-- Audit perubahan akun, transaksi dan pengeluaran; profil/settings usaha.
+- Audit perubahan akun, transaksi dan pengeluaran; profil/settings usaha. Aktivitas Kasir berada di atas Performa Laundry, menampilkan empat aktivitas terbaru seluruh kasir dalam kelompok Owner; filter akun/periode Beranda tidak diterapkan pada preview ini. Detail memuat pelaku, transaksi, tindakan dan alasan yang tersedia; riwayat lengkap tetap di halaman audit yang sama.
+- Respons audit tidak valid ditampilkan sebagai kegagalan, bukan daftar kosong; kartu/halaman memiliki retry dan waktu WIB. Audit dimuat ulang setelah mutasi transaksi berhasil dan saat Owner kembali ke Beranda, bukan pemantauan real-time lintas perangkat selama halaman dibiarkan terbuka.
+- Kartu pembayaran/grafik yang gagal memuat periode terpilih tidak lagi memakai angka dashboard atau perhitungan lokal dari periode lain. Retry dan rincian memakai respons periode/akun yang sama.
 - Backup/restore **konfigurasi usaha**, bukan backup database/transaksi.
 - Bon foto/WhatsApp dan printer Bluetooth memiliki implementasi Android; pengujian perangkat nyata masih diperlukan.
-- Catatan bon cetak/gambar mencakup pengambilan/pembayaran transaksi. Caption WhatsApp memakai nama pelanggan/usaha, nomor transaksi dan total seluruh pesanan (format tebal WhatsApp), bukan nominal DP atau sisa tagihan. Pengaturan usaha ditunggu sebelum pilihan bon dibuka agar nama usaha dan printer tersimpan tersedia sejak pemakaian pertama. Layout struk memakai QR/identitas berdampingan dan jeda cetak akhir dikurangi dari delapan menjadi dua baris, tanpa menghilangkan rincian tagihan/estimasi.
+- Catatan bon cetak/gambar mencakup pengambilan/pembayaran transaksi. Caption WhatsApp memakai nama pelanggan/usaha, nomor transaksi dan total seluruh pesanan (format tebal WhatsApp), bukan nominal DP atau sisa tagihan. Pengaturan usaha ditunggu sebelum pilihan bon dibuka agar nama usaha dan printer tersimpan tersedia sejak pemakaian pertama. Layout struk memakai QR/identitas berdampingan; kode cetak saat ini menambahkan satu baris feed akhir dan perintah potong langsung. Margin mekanis printer tetap memerlukan uji perangkat. Tombol bon berada di konten Detail Transaksi, bukan menutupi tombol pengambilan sebagai FAB.
 - Printer terakhir langsung tersimpan saat dipilih (lokal per perangkat, tanpa menyimpan draft usaha). Izin runtime CONNECT+SCAN diperiksa sebelum connect/cetak; pemilih printer dibatasi tinggi dan dapat di-scroll. Pembatalan draft form dan tindakan destruktif memakai konfirmasi; form kosong/pencarian tetap ditutup normal, kecuali pembuatan layanan baru yang selalu dikonfirmasi. Simpan layanan menunggu hasil API dan mempertahankan isian saat gagal. Detail: [printer dan konfirmasi](docs/PRINTER_KONFIRMASI_2026-10-21.md), [revisi layanan/Laporan/struk](docs/PERBAIKAN_LAYANAN_LAPORAN_STRUK_2026-10-22.md).
 - Request gagal jaringan/5xx diberi notifikasi singkat terpusat, timeout kirim/terima, dan deduplikasi notifikasi. Write tidak diulang otomatis: koneksi putus tidak membuktikan server gagal menyimpan, sehingga pengguna diminta memeriksa data terbaru dahulu.
+- Pesan sukses/gagal ditampilkan melalui banner atas. Validasi form mempertahankan penanda pada kolom yang salah sekaligus menampilkan ringkasan singkat di atas.
 - Back menutup popup/drawer dahulu, lalu kembali satu halaman/tab. Konfirmasi keluar hanya pada Beranda tanpa riwayat sebelumnya. Form menunggu pelepasan overlay sebelum membuang controller; navigasi dikunci sementara selama penyimpanan. Scanner memakai controller kamera yang sama untuk preview/stop/galeri dan mengabaikan respons lookup setelah ditutup.
 
 “Ingat saya” dibatasi 30 hari lokal, dan token Laravel juga kedaluwarsa setelah 30 hari. Startup memverifikasi sesi melalui `/auth/me`, bukan mempercayai role akun lokal.
@@ -79,14 +83,16 @@ Scheduler terdaftar setiap menit di routes/console.php. Hosting perlu memanggil 
 
 | Pemeriksaan | Hasil |
 | --- | --- |
-| PHPUnit backend + regresi baru | **95 lulus**, 707 assertions, SQLite di memori; termasuk 8 tes tujuan pembayaran (86 assertions), enkripsi, QRIS privat, isolasi Owner, rollback dan retry |
+| PHPUnit backend + regresi baru | **107 lulus (20 November)**, **836 assertions**, SQLite di memori; termasuk regresi legacy/manual, deadline/late, kartu Owner/Kasir, pembayaran, pengambilan, audit dan isolasi Owner |
 | Tes audit tambahan dengan token login asli | **13/13 lulus**, 105 assertions; sebelumnya 9 kasus gagal |
 | Regresi Laravel pembayaran, pengambilan bertahap dan isolasi owner (11 Oktober) | **3 lulus**, 35 assertions, SQLite di memori; endpoint tetap memakai validasi backend yang ada |
-| Flutter unit/widget | **199 lulus (22 Oktober)**; tambahan regresi konfirmasi/simpan layanan, cache dan race condition Laporan, timeout/notifikasi request, layout/byte struk 58/80 mm; regresi caption/WhatsApp, printer, pembayaran, navigasi dan auth tetap lulus |
-| Analisis Dart lib + test | **0 error, 11 warning lama**; lint/hint gaya masih tersedia, bukan klaim proyek bebas masalah. Warning tersisa pada model auth dan dashboard Owner lama |
+| Flutter unit/widget | **213 lulus (20 November)**; termasuk 12 regresi baru audit/retry/WIB/refresh, nominal/grafik periode gagal dan notifikasi validasi atas; regresi layanan, printer/struk, pembayaran, navigasi dan auth tetap lulus |
+| Analisis Dart lib + test | **0 error, 6 warning lama** pada anotasi model auth; lint/hint gaya masih tersedia. Painter tak terpakai, cast/default berlebih, blok pelanggan lama yang dikomentari dan konfigurasi exclude analyzer sudah dibersihkan |
 | Composer audit lockfile (runtime dan seluruh paket) | **0 advisori**, setelah upgrade terarah tiga paket |
 
 Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan data sintetis. Belum ada pengujian end-to-end Flutter → server hosting nyata atau seluruh perangkat.
+
+Tahap 20 November tidak menjalankan migrasi pada database nyata, tidak reset/menghapus data, tidak mengubah kredensial/config produksi, serta tidak build APK/Gradle atau mengunduh dependensi. Deploy kode Laravel yang berubah dan build APK baru diperlukan sebelum uji integrasi hosting/perangkat. Fitur manual dari commit sebelumnya memerlukan migrasi nullable `2026_11_20_000001_add_manual_completion_to_transaction_details.php`; keberadaannya di hosting belum diperiksa atau diterapkan pada tahap ini. Jangan memakai `migrate:fresh`/`db:wipe`.
 
 Nominal otomatis diuji dengan simulasi ketikan IME, perubahan tagihan, pengambilan sebagian/terakhir/sudah lunas, batas nominal dan retry pembayaran. Perilaku keyboard fisik Android/iOS belum diverifikasi. Tahap autofill tidak mengubah database Laragon; tahap tujuan pembayaran menambahkan skema sebagaimana dijelaskan berikut. Tidak menjalankan build Android/Gradle atau mengunduh dependensi.
 

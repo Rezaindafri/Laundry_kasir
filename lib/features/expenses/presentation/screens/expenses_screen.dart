@@ -434,7 +434,7 @@ class _ExpenseFormSheetState extends State<_ExpenseFormSheet> {
   }
 
   void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+    if (!validateFormWithNotice(context, _formKey)) return;
     Navigator.of(context).pop(
       ExpenseInput(
         amount: int.parse(_amountController.text),

@@ -242,7 +242,7 @@ class LaundryServicesScreen extends ConsumerWidget {
                                 }
 
                                 final isValid =
-                                    formKey.currentState!.validate();
+                                    validateFormWithNotice(ctx, formKey);
                                 if (isValid == false) {
                                   return;
                                 }

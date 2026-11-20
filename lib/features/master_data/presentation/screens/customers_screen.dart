@@ -259,7 +259,7 @@ class _CustomerFormSheetState extends State<_CustomerFormSheet> {
   }
 
   void _save() {
-    if (!_formKey.currentState!.validate()) return;
+    if (!validateFormWithNotice(context, _formKey)) return;
     FocusManager.instance.primaryFocus?.unfocus();
     Navigator.of(context).pop(
       CustomerEntity(

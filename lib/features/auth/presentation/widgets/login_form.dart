@@ -32,7 +32,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isSubmitting || !validateFormWithNotice(context, _formKey)) return;
 
     setState(() {
       _isSubmitting = true;

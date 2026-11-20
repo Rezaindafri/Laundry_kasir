@@ -6,8 +6,11 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/network/api_endpoints.dart';
 import '../../../../core/network/dio_client.dart';
+import '../../../../core/error/exceptions.dart';
+import '../../../../core/utils/business_time.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/widgets/dashboard_shell.dart';
+import '../providers/audit_refresh_provider.dart';
 
 class _AuditEntry {
   final String action;
@@ -39,8 +42,11 @@ class _AuditEntry {
       actor: actor.isNotEmpty
           ? '${actor['name'] ?? 'Akun'}'
               '${actor['username'] == null ? '' : ' (@${actor['username']})'}'
-          : json['actor_id'] == null ? 'Sistem' : 'Akun #${json['actor_id']}',
-      actorRole: (snapshot['role'] ?? _object(json['actor'])['role'])?.toString(),
+          : json['actor_id'] == null
+              ? 'Sistem'
+              : 'Akun #${json['actor_id']}',
+      actorRole:
+          (snapshot['role'] ?? _object(json['actor'])['role'])?.toString(),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
       metadata: metadata,
     );
@@ -91,38 +97,54 @@ final _auditLogsProvider = FutureProvider.autoDispose
     .family<_AuditLogPage, _AuditQuery>((ref, query) async {
   // Menjamin data audit dimuat ulang saat akun Owner berganti.
   ref.watch(currentSessionUserIdProvider);
+  ref.watch(auditRevisionProvider);
   try {
     final response = await DioClient().dio.get(
-      ApiEndpoints.auditLogs,
-      queryParameters: {
-        'per_page': query.preview ? 4 : 30,
-        'page': query.page,
-        if (query.cashierOnly) 'cashier_activity': 1,
-      },
-      options: query.preview ? Options(extra: {'silentFailure': true}) : null,
-    );
+          ApiEndpoints.auditLogs,
+          queryParameters: {
+            'per_page': query.preview ? 4 : 30,
+            'page': query.page,
+            if (query.cashierOnly) 'cashier_activity': 1,
+          },
+          options:
+              query.preview ? Options(extra: {'silentFailure': true}) : null,
+        );
     final payload = response.data;
-    final rows = payload is Map && payload['data'] is List
-        ? payload['data'] as List
-        : const <dynamic>[];
-    final meta = payload is Map && payload['meta'] is Map
+    if (payload is! Map ||
+        payload['data'] is! List ||
+        payload['status'] == 'error') {
+      throw const ServerException('Gagal memuat audit. Respons tidak valid.');
+    }
+    final rows = payload['data'] as List;
+    if (rows.any((row) =>
+        row is! Map ||
+        row['action'] is! String ||
+        row['subject_type'] is! String ||
+        row['subject_id'] == null)) {
+      throw const ServerException('Gagal memuat audit. Data tidak lengkap.');
+    }
+    if (payload['meta'] != null && payload['meta'] is! Map) {
+      throw const ServerException('Gagal memuat audit. Halaman tidak valid.');
+    }
+    final meta = payload['meta'] is Map
         ? Map<String, dynamic>.from(payload['meta'] as Map)
         : const <String, dynamic>{};
     return _AuditLogPage(
       items: rows
           .whereType<Map>()
           .map((row) => _AuditEntry.fromJson(Map<String, dynamic>.from(row)))
-          .where((entry) => !query.cashierOnly ||
-              (entry.subjectType == 'transaction' && entry.actorRole == 'kasir'))
+          .where((entry) =>
+              !query.cashierOnly ||
+              (entry.subjectType == 'transaction' &&
+                  entry.actorRole == 'kasir'))
           .toList(),
       currentPage: (meta['current_page'] as num?)?.toInt() ?? query.page,
       lastPage: (meta['last_page'] as num?)?.toInt() ?? 1,
       total: (meta['total'] as num?)?.toInt() ?? rows.length,
     );
   } on DioException catch (error) {
-    throw Exception(error.response?.data is Map
-        ? error.response?.data['message']?.toString() ?? 'Gagal memuat audit.'
-        : 'Gagal memuat audit.');
+    throw ServerException('Gagal memuat audit. Coba lagi.',
+        statusCode: error.response?.statusCode);
   }
 });
 
@@ -150,85 +172,101 @@ class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
   Future<void> _refresh() async {
     setState(() => _page = 1);
     ref.invalidate(_auditLogsProvider(_query(1)));
-    await ref.read(_auditLogsProvider(_query(1)).future);
+    await _waitForPage(1);
+  }
+
+  Future<void> _waitForPage(int page) async {
+    try {
+      await ref.read(_auditLogsProvider(_query(page)).future);
+    } catch (_) {/* The provider displays the error and retry control. */}
   }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(sessionProvider).valueOrNull;
     final logs = ref.watch(_auditLogsProvider(_query(_page)));
-    return PageVisibilityRefresh(refreshOnMount: _cached, onVisible: () async {
-      ref.invalidate(_auditLogsProvider(_query(_page)));
-      await ref.read(_auditLogsProvider(_query(_page)).future);
-    }, child: Scaffold(
-      drawer: user == null ? null : AppNavigationDrawer(user: user),
-      appBar: AppBar(title: Text(
-        widget.cashierOnly ? 'Aktivitas Kasir' : 'Riwayat Perubahan',
-      )),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: logs.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => ListView(
-            children: [
-              const SizedBox(height: 180),
-              Center(child: Text('Gagal memuat riwayat: $error')),
-            ],
-          ),
-          data: (data) => data.items.isEmpty
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 180),
-                    Center(child: Text('Belum ada perubahan tercatat.')),
-                  ],
-                )
-              : ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Text('${data.total} perubahan tercatat',
-                        style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 8),
-                    for (final entry in data.items) ...[
-                      _AuditTile(
-                        entry: entry,
-                        onTap: () => _showDetails(context, entry),
-                      ),
-                      const Divider(height: 1),
-                    ],
-                    if (data.lastPage > 1) ...[
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: data.currentPage <= 1
-                                  ? null
-                                  : () => setState(() => _page--),
-                              child: const Text('Sebelumnya'),
-                            ),
+    return PageVisibilityRefresh(
+        refreshOnMount: _cached,
+        onVisible: () async {
+          ref.invalidate(_auditLogsProvider(_query(_page)));
+          await _waitForPage(_page);
+        },
+        child: Scaffold(
+          drawer: user == null ? null : AppNavigationDrawer(user: user),
+          appBar: AppBar(
+              title: Text(
+            widget.cashierOnly ? 'Aktivitas Kasir' : 'Riwayat Perubahan',
+          )),
+          body: RefreshIndicator(
+            onRefresh: _refresh,
+            child: logs.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  const SizedBox(height: 180),
+                  const Center(child: Text('Gagal memuat riwayat.')),
+                  Center(
+                      child: OutlinedButton(
+                          onPressed: _refresh, child: const Text('Coba lagi'))),
+                ],
+              ),
+              data: (data) => data.items.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 180),
+                        Center(child: Text('Belum ada perubahan tercatat.')),
+                      ],
+                    )
+                  : ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        Text('${data.total} perubahan tercatat',
+                            style: Theme.of(context).textTheme.bodySmall),
+                        const SizedBox(height: 8),
+                        for (final entry in data.items) ...[
+                          _AuditTile(
+                            entry: entry,
+                            onTap: () => _showDetails(context, entry),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text('${data.currentPage}/${data.lastPage}'),
-                          ),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: data.currentPage >= data.lastPage
-                                  ? null
-                                  : () => setState(() => _page++),
-                              child: const Text('Berikutnya'),
-                            ),
+                          const Divider(height: 1),
+                        ],
+                        if (data.lastPage > 1) ...[
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: data.currentPage <= 1
+                                      ? null
+                                      : () => setState(() => _page--),
+                                  child: const Text('Sebelumnya'),
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 12),
+                                child: Text(
+                                    '${data.currentPage}/${data.lastPage}'),
+                              ),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: data.currentPage >= data.lastPage
+                                      ? null
+                                      : () => setState(() => _page++),
+                                  child: const Text('Berikutnya'),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                    ],
-                  ],
-                ),
-        ),
-      ),
-    ));
+                      ],
+                    ),
+            ),
+          ),
+        ));
   }
 }
 
@@ -242,12 +280,13 @@ class _AuditTile extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
         onTap: onTap,
         leading: entry.isDeletion
-            ? Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error)
+            ? Icon(Icons.delete_outline,
+                color: Theme.of(context).colorScheme.error)
             : Icon(entry.subjectType == 'transaction'
-            ? Icons.receipt_long_outlined
-            : entry.subjectType == 'expense'
-                ? Icons.trending_down_outlined
-                : Icons.manage_accounts_outlined),
+                ? Icons.receipt_long_outlined
+                : entry.subjectType == 'expense'
+                    ? Icons.trending_down_outlined
+                    : Icons.manage_accounts_outlined),
         title: Text(_actionLabel(entry.action)),
         subtitle: Text(
           '${entry.subjectLabel}\n${entry.actor} • ${_dateLabel(entry.createdAt)}'
@@ -278,7 +317,8 @@ void _showDetails(BuildContext context, _AuditEntry entry) {
             const SizedBox(height: 6),
             Text(entry.subjectLabel),
             if (entry.reason != null) Text('Alasan: ${entry.reason}'),
-            if (entry.serviceName != null) Text('Layanan: ${entry.serviceName}'),
+            if (entry.serviceName != null)
+              Text('Layanan: ${entry.serviceName}'),
             Text('${entry.actor} • ${_dateLabel(entry.createdAt)}'),
             const SizedBox(height: 20),
             Text('Perubahan',
@@ -346,11 +386,21 @@ List<_AuditChange> _changes(
       .where(labels.containsKey)
       .map((key) => _AuditChange(
             labels[key]!,
-            before.containsKey(key) ? _auditDisplay(before[key]) : null,
-            after.containsKey(key) ? _auditDisplay(after[key]) : null,
+            before.containsKey(key)
+                ? _auditFieldDisplay(key, before[key])
+                : null,
+            after.containsKey(key) ? _auditFieldDisplay(key, after[key]) : null,
           ))
       .where((change) => change.before != change.after)
       .toList();
+}
+
+String? _auditFieldDisplay(String key, dynamic value) {
+  if (value != null &&
+      const {'estimated_finish_at', 'occurred_at'}.contains(key)) {
+    return _dateLabel(DateTime.tryParse(value.toString()));
+  }
+  return _auditDisplay(value);
 }
 
 String? _auditDisplay(dynamic value) {
@@ -371,7 +421,7 @@ Map<String, dynamic> _object(dynamic value) =>
 
 String _dateLabel(DateTime? value) => value == null
     ? 'Waktu tidak tersedia'
-    : DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(value.toLocal());
+    : '${DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(BusinessTime.wallTime(value))} WIB';
 
 String _actionLabel(String action) => switch (action) {
       'transaction.created' => 'Transaksi dibuat',
@@ -401,7 +451,7 @@ String _actionLabel(String action) => switch (action) {
 const _cashierPreview = (page: 1, cashierOnly: true, preview: true);
 
 void refreshCashierActivity(WidgetRef ref) {
-  ref.invalidate(_auditLogsProvider(_cashierPreview));
+  ref.read(auditRevisionProvider.notifier).state++;
 }
 
 class CashierActivityCard extends ConsumerWidget {
@@ -417,6 +467,7 @@ class CashierActivityCard extends ConsumerWidget {
         children: [
           ListTile(
             title: const Text('Aktivitas Kasir'),
+            subtitle: const Text('Terbaru • semua kasir'),
             trailing: TextButton(
               onPressed: onOpen,
               child: const Text('Riwayat audit'),
@@ -424,8 +475,11 @@ class CashierActivityCard extends ConsumerWidget {
           ),
           activity.when(
             loading: () => const LinearProgressIndicator(),
-            error: (_, __) =>
-                const ListTile(subtitle: Text('Aktivitas gagal dimuat.')),
+            error: (_, __) => ListTile(
+                subtitle: const Text('Aktivitas gagal dimuat.'),
+                trailing: TextButton(
+                    onPressed: () => refreshCashierActivity(ref),
+                    child: const Text('Coba lagi'))),
             data: (page) => page.items.isEmpty
                 ? const ListTile(subtitle: Text('Belum ada aktivitas kasir.'))
                 : Column(
@@ -434,8 +488,12 @@ class CashierActivityCard extends ConsumerWidget {
                         ListTile(
                           onTap: () => _showDetails(context, entry),
                           leading: Icon(
-                            entry.isDeletion ? Icons.delete_outline : Icons.receipt_long_outlined,
-                            color: entry.isDeletion ? Theme.of(context).colorScheme.error : null,
+                            entry.isDeletion
+                                ? Icons.delete_outline
+                                : Icons.receipt_long_outlined,
+                            color: entry.isDeletion
+                                ? Theme.of(context).colorScheme.error
+                                : null,
                           ),
                           title: Text(entry.subjectLabel),
                           subtitle: Text(

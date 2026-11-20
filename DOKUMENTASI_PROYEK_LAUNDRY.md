@@ -113,7 +113,8 @@ Transaksi:
 - Estimasi transaksi adalah waktu selesai paling akhir dari layanan berestimasi, bukan jumlah durasinya. Bon, detail dan pengambilan menampilkan estimasi tiap layanan.
 - Pencatatan pelanggan, layanan, kuantitas, catatan, metode dan pembayaran awal; DP saat pembuatan memakai nominal yang benar-benar dimasukkan.
 - Invoice/QR mengidentifikasi transaksi. Transaksi baru diarahkan ke detail.
-- Update/hapus umum hanya Owner. Pembayaran melalui payment, pengambilan melalui collection.
+- Update umum hanya Owner. Hapus dapat dilakukan Kasir untuk transaksi berusia maksimal tiga jam dengan alasan wajib; Owner tidak dibatasi umur transaksi. Keduanya tetap tidak dapat menghapus transaksi yang mempunyai pembayaran atau barang sudah diambil. Aturan diperiksa ulang dalam transaksi database dengan lock, bukan hanya tombol Flutter.
+- Penyelesaian manual adalah penyelesaian proses per layanan, bukan pelunasan/pengambilan transaksi. Konfirmasi Flutter memanggil `POST /transactions/{id}/complete-service`; Laravel memeriksa kelompok Owner, memperbarui `manually_completed_at` dan mencatat audit. Retry layanan yang sudah siap tidak menggandakan audit; nominal dan estimasi asli tetap sama.
 - Transaksi dibayar/diambil mempunyai perlindungan penghapusan.
 - Diskon, refund dan pembatalan finansial bukan alur lengkap saat ini; placeholder bukan implementasi refund.
 
@@ -129,12 +130,14 @@ laundry_status: received, washing, drying, ironing, completed, late, collected.
 | Diproses | Ada baris belum diambil yang masih sebelum estimasi selesai |
 | Selesai / siap diambil | Baris completed atau late yang belum diambil; barang berestimasi 0 langsung siap |
 | Belum diambil | Ada minimal satu baris siap yang belum diambil; baris lain boleh masih diproses |
-| Terlambat | Ada baris berestimasi yang belum diambil dan melewati dua kali durasi dari waktu transaksi dibuat |
+| Terlambat | Ada baris berestimasi yang belum diambil, belum diselesaikan manual, dan melewati dua kali durasi dari waktu transaksi dibuat |
 | Sudah diambil | Semua baris sudah diambil melalui pengambilan resmi dan seluruh tagihan lunas |
 
 Durasi 2 jam: estimasi jam ke-2; late setelah jam ke-4. Perbandingan memakai >; tepat pada batas belum late. Otomatisasi estimasi adalah aturan aplikasi sekarang, bukan bukti pemeriksaan fisik pekerjaan.
 
 Status transaksi gabungan: collected jika seluruh baris diambil; late jika ada sisa baris terlambat; completed jika seluruh sisa baris siap; selain itu status proses. Satu transaksi campuran boleh masuk kartu Diproses sekaligus Belum Diambil, karena baris berbeda. Kartu menghitung jumlah transaksi, bukan jumlah baris; filter backend memakai definisi yang sama.
+
+Perbaikan 20 November mempertahankan aturan saat ini: baris yang diselesaikan manual tetap siap, bukan menjadi terlambat karena belum diambil. Perubahan definisi keterlambatan menjadi batas penitipan/pengambilan belum diterapkan. Untuk detail lama `timing_configured=false`, status otomatis dihitung dari estimasi transaksi induk, bukan mengikuti status agregat secara sirkular ketika baris lain selesai manual. Tenggat/jumlah lama tidak ditulis ulang; tanpa estimasi tetap dapat diselesaikan manual, tetapi tidak masuk antrean Diproses berbatas waktu. Accessor dan scope Diproses/siap/pending diselaraskan.
 
 Scheduler laundry:sync-statuses setiap menit dengan withoutOverlapping. Sebagian endpoint juga menyinkronkan kelompok saat request. Tes memakai waktu virtual; cron hosting belum diverifikasi.
 
@@ -234,13 +237,17 @@ Riwayat:
 - Pada alur DB transaction, mutasi dan audit rollback bersama jika gagal.
 - Metadata before/after memilih field relevan, tidak password/token.
 - Owner membaca kelompok sendiri. Super Owner tidak mendapat monitoring audit operasional.
-- Pelaku otomatis null/sistem. actor_id mengacu akun saat dibaca; belum snapshot immutable nama/role saat kejadian.
+- Pelaku otomatis null/sistem. Event baru menyimpan `actor_snapshot` (ID/nama/username/role saat kejadian) di samping actor_id. Data lama tanpa snapshot memakai informasi yang tersedia, bukan mengarang identitas historis.
+- Preview Aktivitas Kasir berada di atas Performa Laundry dan hanya berisi aktivitas kasir kelompok Owner, dengan label tindakan yang benar untuk tiap event. Preview empat aktivitas terbaru seluruh kasir tidak mengikuti filter periode/akun Beranda; halaman audit yang sama menyediakan riwayat lengkap dan detail alasan/before-after.
+- Waktu audit memakai WIB seperti laporan. Respons gagal/tidak valid tidak disamarkan sebagai daftar kosong; tersedia retry. Mutasi transaksi berhasil memicu refresh audit; kembali ke Beranda juga menyegarkan preview meskipun data dashboard sedang dimuat. Tidak ada polling atau klaim live monitoring lintas perangkat.
 
 ## 9. Bon, WhatsApp, QR dan platform
 
 Bon ESC/POS atau gambar. WhatsApp aktif jika nomor pelanggan ada. Direct-share Android menggunakan FileProvider cache receipts/, tidak exported, izin URI sementara.
 
 Kedua jenis bon menampilkan seluruh baris layanan, kuantitas/subtotal dan estimasi kecil di masing-masing layanan, pembayaran diterima/sisa tagihan, serta penanda baris yang sudah diambil. QR tetap mengidentifikasi satu transaksi.
+
+Layout saat ini: QR di kiri, identitas pelanggan di kanan, lalu invoice/rincian. Printer mengirim satu baris feed akhir dan perintah potong langsung; tidak memakai `cut()` pustaka yang menyisipkan lima baris kosong. Margin kepala cetak/cutter tetap perlu diuji fisik. Tombol Cetak Bon berada di daftar konten Detail Transaksi dan tidak lagi mengambang di atas Pengambilan/Pembayaran. Tahap perbaikan 20 November tidak mengubah byte/desain printer lagi.
 
 Batas:
 
@@ -261,7 +268,9 @@ Semua path berawalan /api. Izin efektif dari middleware dan controller.
 | Pelanggan | /customers resource | Kasir/Owner baca+tambah; Owner update/hapus |
 | Layanan | /services resource | Kasir/Owner baca; Owner pengelola |
 | Transaksi | /transactions; /transactions/today; /transactions/ready-to-collect | Owner/Kasir, kelompok sendiri |
-| Koreksi/hapus | PUT/PATCH/DELETE /transactions/{id} | Owner, aturan riwayat/pembayaran |
+| Koreksi | PUT/PATCH /transactions/{id} | Owner, aturan riwayat/pembayaran |
+| Hapus | DELETE /transactions/{id}, reason | Owner/Kasir; Kasir maksimal tiga jam dan alasan wajib; transaksi dibayar/diambil dilindungi |
+| Selesaikan proses | POST /transactions/{id}/complete-service, detail_id | Owner/Kasir kelompok sendiri; bukan pembayaran/pengambilan |
 | Payment/collection | POST /transactions/{id}/payment, /collection, /proof; PATCH /status | Owner/Kasir, kelompok sendiri |
 | Unduh bukti | GET /transactions/{id}/proof | Owner/Kasir aktif, kelompok sendiri; file privat atau legacy terotorisasi |
 | Dashboard | GET /dashboard/kasir, /dashboard/owner, /dashboard/owner/financial | Sesuai role operasional |
@@ -282,15 +291,17 @@ Sebagian deklarasi role master data menyebut Super Owner, tetapi OwnerScopeServi
 
 Migrasi maju 2026_10_10_000006 sudah diterapkan pada Laragon setelah pemeriksaan pending dan checksum read-only sebelum/sesudah. Kolom asli transaksi/detail/pembayaran serta metadata pelanggan/layanan yang dibandingkan tetap identik. Tidak reset, menghapus data, seed akun nyata, atau mengubah kredensial/config produksi. PHPUnit menjalankan migrasi fixture pada SQLite :memory: dengan environment testing, DB_URL kosong, cache/session array, queue sync. Upload memakai storage fake.
 
-- Backend normal dan regresi terbaru: 95/95 lulus, 707 assertions; termasuk 8 tes baru/86 assertions tujuan pembayaran, enkripsi, validasi upload, isolasi Owner, ledger, rollback pengambilan dan retry setelah tujuan dinonaktifkan.
+- Backend normal dan regresi terbaru (20 November): 107/107 lulus, 836 assertions pada SQLite di memori; termasuk status legacy/manual parsial, batas estimasi/late, konsistensi kartu Owner/Kasir, pembayaran/pengambilan, audit, enkripsi dan isolasi Owner.
 - Audit tambahan: 13/13 lulus, 105 assertions; sebelumnya 9 gagal.
-- Flutter: 138 lulus pada 11 Oktober; 12 regresi tambahan meliputi rekening/QRIS, kegagalan/retry pemilihan, foto detail, callback navigasi yang tidak dipicu popup, payload tujuan pada create/pay/collect dan riwayat legacy. Regresi nominal otomatis/manual, pengambilan kembali/refresh, popup/Back/scanner, pilihan, bon, login dan WIB tetap lulus tanpa API/perangkat nyata.
+- Flutter terbaru (20 November): 213 tes lulus, termasuk 12 regresi audit tidak valid/retry/WIB/refresh, kegagalan nominal/grafik periode dan notifikasi validasi atas. Regresi rekening/QRIS, pembayaran/pengambilan, popup/Back/scanner, printer/bon, login dan filter Laporan tetap lulus tanpa API/perangkat nyata.
 - Regresi daftar Pengambilan memeriksa pembayaran penuh/sebagian, pengambilan lunas/sebagian, kegagalan API, Back/pembatalan modal, pencarian yang dipertahankan, pull refresh kosong/pendek/error, respons pagination terlambat serta masuk dari detail/rute QR. Tidak mengubah Laravel/database pada tahap navigasi; tetap menggunakan repository dan endpoint produksi yang sudah ada, tetapi tes baru memakai repository tiruan.
 - Laravel: 3 regresi pembayaran/pengambilan bertahap/idempotensi dan penolakan akses owner lain diulang 11 Oktober; 35 assertions lulus memakai SQLite di memori, tanpa database Laragon. Tidak mengubah kode backend pada tahap autofill ini.
-- Dart lib/test terbaru: 0 error, 11 warning dan 1016 lint/hint informasi. Warning tersisa pada model auth/dashboard Owner lama. Bukan pernyataan bahwa seluruh proyek bebas lint. Keyboard Android/iOS fisik dan E2E server nyata belum diuji; tidak menjalankan build Gradle atau mengunduh dependensi pada tahap ini.
+- Dart lib/test terbaru (20 November): 0 error, 6 warning anotasi model auth; lint/hint gaya masih ada. Painter grafik mati, blok pelanggan lama yang dikomentari, cast/default switch berlebih dan konfigurasi analyzer dibersihkan. Bukan pernyataan seluruh proyek bebas masalah. Keyboard Android/iOS fisik dan E2E hosting belum diuji; tidak build Gradle/APK atau mengunduh dependensi.
 - Composer runtime dan seluruh lockfile: 0 advisori setelah upgrade tiga paket; validasi Composer dan persyaratan platform lokal lolos.
 
 Cara testing aman di README. UI test tidak memakai API nyata; API test tidak memakai database pelanggan asli. Tes injection/upload adalah sampel negatif, bukan penetration test lengkap.
+
+Tahap perbaikan 20 November mengubah kode Flutter dan tiga file runtime Laravel (Transaction, TransactionDetail, TransactionStatusService), tanpa migrasi baru atau penulisan ulang data lama. Tidak menerapkan migrasi pada database asli, reset, hapus data, ganti kredensial, konfigurasi hosting, build APK/Gradle atau unduh dependensi. Migrasi nullable penyelesaian manual dari commit sebelumnya tetap diperlukan oleh fitur tersebut, tetapi penerapannya di hosting belum diverifikasi. Untuk memakai perbaikan di perangkat: deploy kode Laravel, pastikan skema sudah sesuai lewat prosedur migrasi maju yang ditinjau/di-backup, lalu build APK baru; jangan gunakan migrate:fresh/db:wipe.
 
 Migrasi tambahan `2026_10_11_000007_add_owner_payment_destinations.php` telah diterapkan pada Laragon lokal: tabel baru dan dua kolom nullable ledger, tanpa reset/seed/hapus data. Pemeriksaan sebelum/sesudah membandingkan jumlah baris dan checksum seluruh kolom lama pada users/customers/services/transactions/transaction_details/transaction_payments/laundry_settings; identik. Script lokal `scripts/verify_payment_destination_migration.php` menolak lingkungan produksi/non-MySQL/non-localhost; tanpa `--apply` hanya memeriksa. Tidak memasukkan QRIS/rekening nyata untuk tes.
 

@@ -1092,7 +1092,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: () {
-                    if (!formKey.currentState!.validate()) return;
+                    if (!validateFormWithNotice(sheetContext, formKey)) return;
                     Navigator.pop(
                       sheetContext,
                       CustomerEntity(

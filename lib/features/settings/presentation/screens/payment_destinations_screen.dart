@@ -357,12 +357,15 @@ class _DestinationFormState extends State<_DestinationForm> {
                             onPressed: _picking
                                 ? null
                                 : () {
-                                    if (!_form.currentState!.validate()) return;
+                                    if (!validateFormWithNotice(context, _form)) return;
                                     if (_kind == 'qris' &&
                                         _image == null &&
                                         widget.item?.hasQrisImage != true) {
                                       setState(() => _imageError =
                                           'Gambar QRIS wajib dipilih.');
+                                      TopNotice.of(context).showTopNotice(const SnackBar(
+                                        content: Text('Gambar QRIS wajib dipilih.'),
+                                      ));
                                       return;
                                     }
                                     Navigator.pop(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -62,14 +63,6 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
             now,
             _selectedPeriod,
           );
-    final chartSeries = dashboard?.chart.isNotEmpty == true
-        ? dashboard!.chart
-            .map((item) => _RevenuePoint(
-                item.label.substring(0, 1).toUpperCase() +
-                    item.label.substring(1),
-                item.value.toDouble()))
-            .toList()
-        : _buildRevenueSeries(effectiveTransactions, now, _selectedPeriod);
     final serviceDistribution = dashboard == null
         ? _serviceDistribution(effectiveTransactions)
         : _serverDistribution(dashboard.insights);
@@ -115,7 +108,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     final displayChartSeries = revenueSnapshot.valueOrNull?.chart
             .map((item) => _RevenuePoint(item.label, item.value.toDouble()))
             .toList() ??
-        chartSeries;
+        const <_RevenuePoint>[];
 
     if (dashboard != null) _warmFinancialCache(cashierId);
 
@@ -181,33 +174,47 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 ),
                 const SizedBox(height: 14),
                 _PaymentHighlightCard(
-                  value: paymentSnapshot.isLoading &&
-                          paymentSnapshot.valueOrNull == null
+                  value: paymentSnapshot.isLoading
                       ? '…'
-                      : currency.format(
-                          paymentSnapshot.valueOrNull?.paymentsReceived ??
-                              dashboardSummary.revenue,
-                        ),
+                      : paymentSnapshot.hasError
+                          ? '—'
+                          : paymentSnapshot.valueOrNull == null
+                              ? '…'
+                              : currency.format(
+                                  paymentSnapshot.requireValue.paymentsReceived,
+                                ),
                   period: _selectedPaymentPeriod,
                   caption: paymentSnapshot.isLoading
                       ? 'Menyiapkan data pembayaran...'
-                      : _selectedPaymentPeriod.paymentCaption,
+                      : paymentSnapshot.hasError
+                          ? 'Pembayaran gagal dimuat'
+                          : _selectedPaymentPeriod.paymentCaption,
                   onPeriodChanged: (period) {
                     setState(() => _selectedPaymentPeriod = period);
                   },
-                  onTap: () => _showFinancialDetails(
-                    context,
-                    title:
-                        'Pembayaran diterima — ${_selectedPaymentPeriod.label}',
-                    total: paymentSnapshot.valueOrNull?.paymentsReceived ??
-                        dashboard?.summary.paymentsReceived ??
-                        0,
-                    items: paymentSnapshot.valueOrNull?.paymentDetails ??
-                        dashboard?.paymentDetails ??
-                        const [],
-                    isPayment: true,
-                    currency: currency,
-                  ),
+                  onRetry:
+                      paymentSnapshot.hasError && !paymentSnapshot.isLoading
+                          ? () => ref.invalidate(
+                                ownerFinancialProvider(OwnerFinancialRequest(
+                                  period: _selectedPaymentPeriod.apiValue,
+                                  cashierId: cashierId,
+                                )),
+                              )
+                          : null,
+                  onTap: paymentSnapshot.isLoading ||
+                          paymentSnapshot.hasError ||
+                          paymentSnapshot.valueOrNull == null
+                      ? null
+                      : () => _showFinancialDetails(
+                            context,
+                            title:
+                                'Pembayaran diterima — ${_selectedPaymentPeriod.label}',
+                            total:
+                                paymentSnapshot.requireValue.paymentsReceived,
+                            items: paymentSnapshot.requireValue.paymentDetails,
+                            isPayment: true,
+                            currency: currency,
+                          ),
                 ),
                 const SizedBox(height: 12),
                 _ExpenseOverviewCard(
@@ -329,17 +336,28 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                 _SectionCard(
                   title: '',
                   trailing: '',
-                  child: revenueSnapshot.isLoading &&
-                          revenueSnapshot.valueOrNull == null
+                  child: revenueSnapshot.isLoading
                       ? const SizedBox(
                           height: 180,
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      : displayChartSeries.isEmpty ||
-                              displayChartSeries
-                                  .every((point) => point.value <= 0)
-                          ? _EmptyRevenueState(currency: currency)
-                          : _RevenueChart(points: displayChartSeries),
+                          child: Center(child: CircularProgressIndicator()))
+                      : revenueSnapshot.hasError
+                          ? Column(children: [
+                              const Text('Grafik gagal dimuat'),
+                              TextButton(
+                                  onPressed: () => ref.invalidate(
+                                        ownerFinancialProvider(
+                                            OwnerFinancialRequest(
+                                          period: _selectedPeriod.apiValue,
+                                          cashierId: cashierId,
+                                        )),
+                                      ),
+                                  child: const Text('Coba lagi')),
+                            ])
+                          : displayChartSeries.isEmpty ||
+                                  displayChartSeries
+                                      .every((point) => point.value <= 0)
+                              ? _EmptyRevenueState(currency: currency)
+                              : _RevenueChart(points: displayChartSeries),
                 ),
                 const SizedBox(height: 14),
                 CashierActivityCard(
@@ -483,12 +501,14 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       for (final period in _RevenuePeriod.values) {
-        ref.read(
-          ownerFinancialProvider(
-            OwnerFinancialRequest(
-                period: period.apiValue, cashierId: cashierId),
-          ).future,
-        );
+        unawaited(ref
+            .read(
+              ownerFinancialProvider(
+                OwnerFinancialRequest(
+                    period: period.apiValue, cashierId: cashierId),
+              ).future,
+            )
+            .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
       }
     });
   }
@@ -808,64 +828,6 @@ _DashboardSummary _buildDashboardSummary(
   );
 }
 
-List<_RevenuePoint> _buildRevenueSeries(
-    List<TransactionEntity> items, DateTime now, _RevenuePeriod period) {
-  switch (period) {
-    case _RevenuePeriod.today:
-      final start = DateTime(now.year, now.month, now.day);
-      final end = start.add(const Duration(days: 1));
-      final revenue = items
-          .where((item) =>
-              !item.createdAt.isBefore(start) && item.createdAt.isBefore(end))
-          .fold<int>(0, (sum, item) => sum + item.paidAmount);
-      return [_RevenuePoint('Hari ini', revenue.toDouble())];
-    case _RevenuePeriod.week:
-      final series = <_RevenuePoint>[];
-      for (var i = 6; i >= 0; i--) {
-        final date = now.subtract(Duration(days: i));
-        final target = DateTime(date.year, date.month, date.day);
-        final revenue = items
-            .where((item) => DateTime(item.createdAt.year, item.createdAt.month,
-                    item.createdAt.day)
-                .isAtSameMomentAs(target))
-            .fold<int>(0, (sum, item) => sum + item.paidAmount);
-        series.add(_RevenuePoint(
-            DateFormat.E('id_ID').format(date).substring(0, 3),
-            revenue.toDouble()));
-      }
-      return series;
-    case _RevenuePeriod.month:
-      return List.generate(4, (index) {
-        final start =
-            DateTime(now.year, now.month, 1).add(Duration(days: index * 7));
-        final end = start.add(const Duration(days: 6));
-        final revenue = items.where((item) {
-          final date = item.createdAt;
-          return !date.isBefore(start) && !date.isAfter(end);
-        }).fold<int>(0, (sum, item) => sum + item.paidAmount);
-        return _RevenuePoint('M${index + 1}', revenue.toDouble());
-      });
-    case _RevenuePeriod.year:
-      return List.generate(7, (index) {
-        final month = now.month - (6 - index);
-        final year = now.year;
-        final normalizedMonth = month <= 0 ? month + 12 : month;
-        final normalizedYear = month <= 0 ? year - 1 : year;
-        final firstDay = DateTime(normalizedYear, normalizedMonth, 1);
-        final lastDay = DateTime(normalizedYear, normalizedMonth + 1, 0);
-        final revenue = items.where((item) {
-          final date = item.createdAt;
-          return !date.isBefore(firstDay) && !date.isAfter(lastDay);
-        }).fold<int>(0, (sum, item) => sum + item.paidAmount);
-        return _RevenuePoint(
-            DateFormat.MMM('id_ID').format(firstDay).substring(0, 3),
-            revenue.toDouble());
-      });
-    default:
-      return const <_RevenuePoint>[];
-  }
-}
-
 int _revenueForPeriod(
     List<TransactionEntity> items, _RevenuePeriod period, DateTime now,
     {required int offset}) {
@@ -897,8 +859,6 @@ int _revenueForPeriod(
           .where((item) =>
               !item.createdAt.isBefore(start) && !item.createdAt.isAfter(end))
           .fold<int>(0, (sum, item) => sum + item.paidAmount);
-    default:
-      return 0;
   }
 }
 
@@ -933,8 +893,6 @@ int _transactionCountForPeriod(
           .where((item) =>
               !item.createdAt.isBefore(start) && !item.createdAt.isAfter(end))
           .length;
-    default:
-      return 0;
   }
 }
 
@@ -1066,7 +1024,8 @@ class _PaymentHighlightCard extends StatelessWidget {
   final _RevenuePeriod period;
   final String caption;
   final ValueChanged<_RevenuePeriod> onPeriodChanged;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final VoidCallback? onRetry;
 
   const _PaymentHighlightCard({
     required this.value,
@@ -1074,6 +1033,7 @@ class _PaymentHighlightCard extends StatelessWidget {
     required this.caption,
     required this.onPeriodChanged,
     required this.onTap,
+    this.onRetry,
   });
 
   @override
@@ -1144,6 +1104,12 @@ class _PaymentHighlightCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(caption,
                         style: const TextStyle(color: Color(0xFFDCEEFF))),
+                    if (onRetry != null)
+                      TextButton(
+                          onPressed: onRetry,
+                          style: TextButton.styleFrom(
+                              foregroundColor: Colors.white),
+                          child: const Text('Coba lagi')),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 6,
@@ -1495,95 +1461,6 @@ class _RevenueBar extends StatelessWidget {
       ),
     );
   }
-}
-
-class _RevenueChartPainter extends CustomPainter {
-  final List<_RevenuePoint> points;
-  final double maxValue;
-  final TextDirection textDirection;
-
-  const _RevenueChartPainter({
-    required this.points,
-    required this.maxValue,
-    required this.textDirection,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()
-      ..color = AppColors.primary
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round;
-
-    final fillPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0x6640A3FF), Color(0x00FFFFFF)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    final gridPaint = Paint()
-      ..color = const Color(0xFFE6EDF6)
-      ..strokeWidth = 1;
-    final textStyle = AppTextStyles.bodyMuted.copyWith(fontSize: 11);
-
-    final chartRect = Rect.fromLTWH(12, 14, size.width - 26, size.height - 36);
-    final innerHeight = chartRect.height;
-    final innerWidth = chartRect.width;
-
-    for (var i = 0; i <= 3; i++) {
-      final y = chartRect.top + (innerHeight / 3) * i;
-      canvas.drawLine(
-          Offset(chartRect.left, y), Offset(chartRect.right, y), gridPaint);
-    }
-
-    final path = Path();
-    final areaPath = Path();
-    final pointsCount = points.length;
-    if (pointsCount > 0) {
-      for (var i = 0; i < pointsCount; i++) {
-        final point = points[i];
-        final x =
-            chartRect.left + (innerWidth / math.max(1, pointsCount - 1)) * i;
-        final normalized = point.value / (maxValue == 0 ? 1 : maxValue);
-        final y = chartRect.bottom - (normalized * innerHeight);
-        if (i == 0) {
-          path.moveTo(x, y);
-          areaPath.moveTo(x, chartRect.bottom);
-          areaPath.lineTo(x, y);
-        } else {
-          path.lineTo(x, y);
-          areaPath.lineTo(x, y);
-        }
-      }
-      areaPath.lineTo(chartRect.right, chartRect.bottom);
-      areaPath.close();
-      canvas.drawPath(areaPath, fillPaint);
-      canvas.drawPath(path, linePaint);
-    }
-
-    for (var i = 0; i < points.length; i++) {
-      final point = points[i];
-      final x =
-          chartRect.left + (innerWidth / math.max(1, points.length - 1)) * i;
-      final normalized = point.value / (maxValue == 0 ? 1 : maxValue);
-      final y = chartRect.bottom - (normalized * innerHeight);
-      final dotPaint = Paint()..color = AppColors.primary;
-      canvas.drawCircle(Offset(x, y), 3, dotPaint);
-
-      final label = point.label;
-      final textPainter = TextPainter(
-        text: TextSpan(text: label, style: textStyle),
-        textDirection: textDirection,
-      )..layout();
-      textPainter.paint(
-          canvas, Offset(x - textPainter.width / 2, size.height - 20));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RevenueChartPainter oldDelegate) => false;
 }
 
 class _LaundryPerformance extends StatelessWidget {

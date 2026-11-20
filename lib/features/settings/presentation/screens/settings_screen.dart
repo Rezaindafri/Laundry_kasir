@@ -241,7 +241,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!validateFormWithNotice(context, _formKey)) return;
     final value = widget.value.copyWith(
       businessName: _name.text.trim(),
       phone: _phone.text.trim(),
@@ -494,7 +494,7 @@ class _ProfileSection extends ConsumerWidget {
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: () {
-                  if (!formKey.currentState!.validate()) return;
+                  if (!validateFormWithNotice(sheetContext, formKey)) return;
                   Navigator.pop(
                     sheetContext,
                     _ProfileInput(
@@ -601,7 +601,7 @@ class _ProfileSection extends ConsumerWidget {
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: () {
-                  if (!formKey.currentState!.validate()) return;
+                  if (!validateFormWithNotice(sheetContext, formKey)) return;
                   Navigator.pop(
                     sheetContext,
                     _PasswordInput(currentPassword.text, password.text),
@@ -906,7 +906,7 @@ class _SuperOwnerSettingsSection extends ConsumerWidget {
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: () {
-                  if (!formKey.currentState!.validate()) return;
+                  if (!validateFormWithNotice(sheetContext, formKey)) return;
                   Navigator.pop(sheetContext, int.parse(controller.text));
                 },
                 child: const Text('Simpan kebijakan'),

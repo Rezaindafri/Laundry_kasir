@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/top_notice.dart';
 import '../../../../core/widgets/unsaved_changes_guard.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -145,7 +146,7 @@ class _PaymentEntrySheetState extends State<PaymentEntrySheet> {
                   const SizedBox(height: 16),
                   FilledButton(
                       onPressed: () {
-                        if (!_formKey.currentState!.validate()) return;
+                        if (!validateFormWithNotice(context, _formKey)) return;
                         final amount = int.parse(_amount.text.trim());
                         final note = _note.text.trim().isEmpty
                             ? null
