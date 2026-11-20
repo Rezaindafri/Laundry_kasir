@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -52,9 +53,8 @@ class _LoginFormState extends ConsumerState<LoginForm> {
         setState(() {
           _loginError = failure.message;
         });
-        final messenger = ScaffoldMessenger.maybeOf(context);
-        messenger?.hideCurrentSnackBar();
-        messenger?.showSnackBar(
+        final messenger = TopNotice.maybeOf(context);
+        messenger?.showTopNotice(
           SnackBar(
             content: Text(
               failure.message,

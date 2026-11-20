@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/widgets/navigation_write_guard.dart';
 import '../../../../core/widgets/safe_modal_sheet.dart';
@@ -98,7 +99,7 @@ class LaundryServicesScreen extends ConsumerWidget {
   }
 
   void _showNoAccessMessage(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    TopNotice.of(context).showTopNotice(
       const SnackBar(
         content: Text('Kasir hanya dapat melihat katalog layanan.'),
       ),
@@ -300,9 +301,8 @@ class LaundryServicesScreen extends ConsumerWidget {
 
       if (!isCurrentPage(context)) return;
       if (result != null) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(
+        TopNotice.of(context)
+          .showTopNotice(const SnackBar(
             content: Text('Data layanan berhasil disimpan.'),
           ));
       }
@@ -341,8 +341,8 @@ class LaundryServicesScreen extends ConsumerWidget {
   void _showResult(
           BuildContext context, dynamic result, String successMessage) =>
       result.when(
-          success: (_) => ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(successMessage))),
-          error: (Failure failure) => ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(failure.message))));
+          success: (_) => TopNotice.of(context)
+              .showTopNotice(SnackBar(content: Text(successMessage))),
+          error: (Failure failure) => TopNotice.of(context)
+              .showTopNotice(SnackBar(content: Text(failure.message))));
 }

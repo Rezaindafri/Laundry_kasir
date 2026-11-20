@@ -26,5 +26,6 @@ abstract class TransactionRepository {
     int? paymentAmount,
     String? paymentNote,
   });
-  Future<Result<void>> delete(String id);
+  Future<Result<TransactionEntity>> completeService(String id, String detailId);
+  Future<Result<void>> delete(String id, {String? reason});
 }

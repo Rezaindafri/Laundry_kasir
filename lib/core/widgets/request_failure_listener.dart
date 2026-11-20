@@ -1,3 +1,4 @@
+import 'top_notice.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -8,13 +9,13 @@ import '../network/request_failure_notice.dart';
 class RequestFailureListener extends StatefulWidget {
   const RequestFailureListener({
     required this.events,
-    required this.messengerKey,
+    required this.navigatorKey,
     required this.child,
     super.key,
   });
 
   final Stream<RequestFailureNotice> events;
-  final GlobalKey<ScaffoldMessengerState> messengerKey;
+  final GlobalKey<NavigatorState> navigatorKey;
   final Widget child;
 
   @override
@@ -38,12 +39,11 @@ class _RequestFailureListenerState extends State<RequestFailureListener> {
       if (_lastNotice != null &&
           now.difference(_lastNotice!) < const Duration(seconds: 4) &&
           (!event.isWrite || _lastWasWrite)) return;
-      final messenger = widget.messengerKey.currentState;
-      if (!mounted || messenger == null) return;
+      final overlay = widget.navigatorKey.currentState?.overlay;
+      if (!mounted || overlay == null) return;
       _lastNotice = now;
       _lastWasWrite = event.isWrite;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(content: Text(event.message)));
+      TopNotice(overlay).showTopNotice(SnackBar(content: Text(event.message)));
     });
   }
 

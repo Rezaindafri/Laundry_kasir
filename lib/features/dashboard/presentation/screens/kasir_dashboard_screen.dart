@@ -323,7 +323,20 @@ class _KasirDashboardScreenState extends ConsumerState<KasirDashboardScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 34),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const TransactionsScreen(completionMode: true),
+                      ),
+                    );
+                    if (mounted) await _refresh();
+                  },
+                  icon: const Icon(Icons.task_alt),
+                  label: const Text('Selesaikan Layanan'),
+                ),
+                const SizedBox(height: 22),
                 _ActiveQueue(
                   showReady: _showReady,
                   due: dashboard.dueSoonItems,

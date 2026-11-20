@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -161,7 +162,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
           await ref.read(printerDeviceServiceProvider).getPairedDevices();
       if (!mounted) return;
       if (devices.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        TopNotice.of(context).showTopNotice(const SnackBar(
             content: Text(
                 'Tidak ada printer Bluetooth yang telah dipasangkan di perangkat ini.')));
         return;
@@ -220,17 +221,17 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
           _printerMac = selected.macAddress;
           _printerName = selected.name;
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        TopNotice.of(context).showTopNotice(const SnackBar(
           content: Text('Printer tersimpan untuk perangkat ini.'),
         ));
       }
     } on PrinterException catch (error) {
       if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        TopNotice.of(context).showTopNotice(const SnackBar(
           content: Text('Printer gagal disimpan. Silakan coba lagi.'),
         ));
       }
@@ -264,14 +265,14 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
                 .saveDeviceSettings(value));
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('Pengaturan tersimpan.')),
         );
       }
     } on ServerException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
       }
     }
   }
@@ -523,14 +524,14 @@ class _ProfileSection extends ConsumerWidget {
         ref.invalidate(currentProfileProvider);
       });
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('Profil berhasil diperbarui.')),
         );
       }
     } on ServerException catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
       }
     }
   }
@@ -623,14 +624,14 @@ class _ProfileSection extends ConsumerWidget {
                 password: result.password,
               ));
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('Password berhasil diperbarui.')),
         );
       }
     } on ServerException catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
       }
     }
   }
@@ -661,8 +662,8 @@ class _BackupRestoreSectionState extends ConsumerState<_BackupRestoreSection> {
       );
     } on ServerException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -706,20 +707,20 @@ class _BackupRestoreSectionState extends ConsumerState<_BackupRestoreSection> {
           () =>
               ref.read(laundrySettingsProvider.notifier).restoreBackup(backup));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('Konfigurasi berhasil dipulihkan.')),
         );
       }
     } on FormatException {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('Berkas backup bukan JSON yang valid.')),
         );
       }
     } on ServerException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -924,14 +925,14 @@ class _SuperOwnerSettingsSection extends ConsumerWidget {
               .updatePasswordMinLength(result));
       ref.invalidate(superOwnerSettingsProvider);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('Kebijakan password diperbarui.')),
         );
       }
     } on ServerException catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
       }
     }
   }

@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'dart:typed_data';
 import 'dart:async';
 
@@ -80,12 +81,14 @@ extension TransactionListFilterLabel on TransactionListFilter {
 class TransactionsScreen extends ConsumerStatefulWidget {
   final TransactionListFilter initialFilter;
   final bool isCollectionMode;
+  final bool completionMode;
   final DateTimeRange? initialDateRange;
   final String? initialCashierId;
 
   const TransactionsScreen({
     this.initialFilter = TransactionListFilter.all,
     this.isCollectionMode = false,
+    this.completionMode = false,
     this.initialDateRange,
     this.initialCashierId,
     super.key,
@@ -142,6 +145,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final query = <String, dynamic>{
       'page': page,
       'per_page': 20,
+      if (widget.completionMode) ...{
+        'pending_service_completion': 1,
+        'collected': 0,
+      },
     };
     if (selected.contains(TransactionListFilter.washing)) {
       // "Diproses" remains active only until its scheduled finish time.
@@ -290,22 +297,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   filter != TransactionListFilter.notCollected),
         )
         .toList();
-    return PageVisibilityRefresh(
-      onCovered: () => _coveredQueryVersion = _queryVersion,
-      onVisible: () async {
-        // An awaited card result or successful payment may already have reloaded
-        // this query before the page becomes visible. Do not request it twice.
-        if (_coveredQueryVersion == _queryVersion) await _loadFirstPage();
-      },
-      child: Scaffold(
-      drawer: widget.isCollectionMode || user == null
+    final page = Scaffold(
+      drawer: widget.isCollectionMode || widget.completionMode || user == null
           ? null
           : AppNavigationDrawer(user: user),
       appBar: AppBar(
-        title: Text(widget.isCollectionMode ? 'Pengambilan' : 'Transaksi'),
+        title: Text(widget.completionMode
+            ? 'Selesaikan Layanan'
+            : widget.isCollectionMode ? 'Pengambilan' : 'Transaksi'),
         automaticallyImplyLeading: true,
       ),
-      floatingActionButton: widget.isCollectionMode
+      floatingActionButton: widget.isCollectionMode || widget.completionMode
           ? null
           : FloatingActionButton.extended(
               onPressed: () async {
@@ -329,7 +331,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           ],
         )),
         data: (page) {
-          final items = page.items;
+          // Older API versions may ignore the new query flag. Only show rows
+          // whose service state in the response allows manual completion.
+          final items = widget.completionMode
+              ? page.items.where((item) => item.pendingServiceLines.isNotEmpty).toList()
+              : page.items;
           return Column(
             children: [
               Padding(
@@ -365,7 +371,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Align(
+                    if (!widget.completionMode) Align(
                       alignment: Alignment.centerRight,
                       child: OutlinedButton.icon(
                         onPressed: () => _openFilterSheet(availableFilters),
@@ -385,9 +391,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               ),
               Expanded(
                 child: items.isEmpty
-                    ? _refreshableNotice(const Text(
-                        'Tidak ada transaksi untuk filter yang dipilih.',
-                        textAlign: TextAlign.center,
+                    ? _refreshableNotice(Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.completionMode
+                                ? 'Tidak ada layanan yang masih diproses.'
+                                : 'Tidak ada transaksi untuk filter yang dipilih.',
+                            textAlign: TextAlign.center,
+                          ),
+                          if (page.hasMore)
+                            TextButton(
+                              onPressed: _loadingMore ? null : _loadMore,
+                              child: const Text('Periksa transaksi lainnya'),
+                            ),
+                        ],
                       ))
                     : RefreshIndicator(
                         onRefresh: _loadFirstPage,
@@ -408,8 +426,32 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                         child: const Text('Muat transaksi lainnya'))),
                               );
                             }
+                            final transaction = items[index];
+                            if (widget.completionMode) {
+                              return Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(transaction.customerName,
+                                          style: Theme.of(context).textTheme.titleMedium),
+                                      Text(transaction.invoice),
+                                      const SizedBox(height: 8),
+                                      TransactionServiceLines(
+                                        transaction: transaction,
+                                        onlyPending: true,
+                                        onComplete: (line) => _confirmServiceCompletion(
+                                          context, ref, transaction, line,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
                             return _TransactionCard(
-                              transaction: items[index],
+                              transaction: transaction,
                               isCollectionMode: widget.isCollectionMode,
                               onReturn: _loadFirstPage,
                             );
@@ -421,7 +463,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           );
         },
       ),
-    ));
+    );
+    return PageVisibilityRefresh(
+      onCovered: () => _coveredQueryVersion = _queryVersion,
+      onVisible: () async {
+        // An awaited card result or successful payment may already have reloaded
+        // this query before the page becomes visible. Do not request it twice.
+        if (_coveredQueryVersion == _queryVersion) await _loadFirstPage();
+      },
+      child: widget.completionMode ? NavigationWriteGuard(child: page) : page,
+    );
   }
 }
 
@@ -1076,12 +1127,12 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
     saved.when(
       success: (customer) {
         setState(() => _customer = customer);
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('Pelanggan berhasil ditambahkan.')),
         );
       },
       error: (failure) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           SnackBar(content: Text(failure.message)),
         );
       },
@@ -1097,7 +1148,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
             line.service == null ||
             Validators.positiveNumber(line.quantity.text, field: 'Jumlah') !=
                 null)) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         const SnackBar(
           content:
               Text('Pilih pelanggan dan lengkapi layanan beserta jumlahnya.'),
@@ -1109,7 +1160,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
     // may not have an active FormField when the fixed Save button is pressed.
     if (_paymentStatus != PaymentStatus.unpaid &&
         _validateInitialPayment(_initialPayment.text) != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
           SnackBar(content: Text(_validateInitialPayment(_initialPayment.text)!)));
       return;
     }
@@ -1190,7 +1241,7 @@ class _NewTransactionScreenState extends ConsumerState<NewTransactionScreen> {
       },
       error: (failure) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           SnackBar(
             content: Text('Gagal menyimpan transaksi: ${failure.message}'),
           ),
@@ -1416,6 +1467,55 @@ class _PriceRow extends StatelessWidget {
       );
 }
 
+Future<TransactionEntity?> _confirmServiceCompletion(
+  BuildContext context,
+  WidgetRef ref,
+  TransactionEntity transaction,
+  TransactionLineEntity line,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Selesaikan proses layanan?'),
+      content: Text(
+        '${line.name} pada bon ${transaction.invoice} akan siap diambil sekarang. '
+        'Pembayaran dan pengambilan tetap dicatat terpisah.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Ya, Selesaikan Proses'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return null;
+  final result = await withNavigationWriteLock(
+    ref,
+    () => ref.read(transactionsProvider.notifier)
+        .completeService(transaction.id, line.id),
+  );
+  if (!context.mounted) return null;
+  return result.when(
+    success: (item) {
+      TopNotice.of(context).showTopNotice(
+        SnackBar(content: Text('Proses ${line.name} selesai. Layanan siap diambil.')),
+      );
+      return item;
+    },
+    error: (failure) {
+      TopNotice.of(context).showTopNotice(
+        SnackBar(content: Text(failure.message)),
+      );
+      return null;
+    },
+  );
+}
+
 class TransactionDetailScreen extends ConsumerStatefulWidget {
   final TransactionEntity transaction;
   const TransactionDetailScreen({required this.transaction, super.key});
@@ -1437,6 +1537,73 @@ class _TransactionDetailScreenState
     _detailCached = ref.exists(transactionDetailProvider(widget.transaction.id));
   }
 
+  Future<void> _deleteTransaction({required bool requireReason}) async {
+    var reason = '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Hapus transaksi'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Hapus transaksi ${_transaction.invoice}?'),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: InputDecoration(
+                  labelText: requireReason ? 'Alasan hapus (wajib)' : 'Alasan hapus',
+                ),
+                maxLength: 500,
+                minLines: 1,
+                maxLines: 3,
+                onChanged: (value) => setDialogState(() => reason = value.trim()),
+              ),
+            ],
+          ),
+          scrollable: true,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: requireReason && reason.isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, true),
+              child: const Text('Hapus'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final result = await withNavigationWriteLock(
+      ref,
+      () => ref.read(transactionsProvider.notifier).deleteTransaction(
+        _transaction.id, reason: reason.isEmpty ? null : reason,
+      ),
+    );
+    if (!mounted) return;
+    final messenger = TopNotice.of(context);
+    result.when(
+      success: (_) {
+        Navigator.pop(context);
+        messenger.showTopNotice(const SnackBar(content: Text('Transaksi dihapus.')));
+      },
+      error: (failure) => messenger.showTopNotice(
+        SnackBar(content: Text(failure.message)),
+      ),
+    );
+  }
+
+  Future<void> _completeService(TransactionLineEntity line) async {
+    final updated = await _confirmServiceCompletion(
+      context, ref, _transaction, line,
+    );
+    if (mounted && updated != null) setState(() => _transaction = updated);
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentRole = ref.watch(sessionProvider).valueOrNull?.role;
@@ -1444,7 +1611,11 @@ class _TransactionDetailScreenState
     ref.listen(transactionDetailProvider(widget.transaction.id), (_, next) {
       if (next.hasValue && mounted) setState(() => _transaction = next.requireValue);
     });
-    final canDelete = currentRole == UserRole.owner &&
+    final canProcess = currentRole == UserRole.owner || currentRole == UserRole.kasir;
+    final canDelete = (currentRole == UserRole.owner ||
+            (currentRole == UserRole.kasir &&
+                !DateTime.now().isAfter(
+                    _transaction.createdAt.add(const Duration(hours: 3))))) &&
         _transaction.laundryStatus != LaundryStatus.collected &&
         _transaction.paidAmount == 0 &&
         !_transaction.serviceLines.any((line) => line.isCollected);
@@ -1461,56 +1632,14 @@ class _TransactionDetailScreenState
       await ref.read(transactionDetailProvider(_transaction.id).future);
     }, child: NavigationWriteGuard(
         child: Scaffold(
-      floatingActionButton: _PrintReceiptButton(transaction: _transaction),
       appBar: AppBar(
         title: const Text('Detail Transaksi'),
         actions: [
           if (canDelete)
             PopupMenuButton<String>(
-              onSelected: (value) async {
-                if (value == 'delete') {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (dialogContext) => AlertDialog(
-                      title: const Text('Hapus transaksi'),
-                      content: Text(
-                        'Yakin ingin menghapus transaksi ${_transaction.invoice}?',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(dialogContext, false),
-                          child: const Text('Batal'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(dialogContext, true),
-                          child: const Text('Hapus'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed != true || !mounted) return;
-                  final result = await withNavigationWriteLock(
-                      ref,
-                      () => ref
-                          .read(transactionsProvider.notifier)
-                          .deleteTransaction(_transaction.id));
-                  if (!context.mounted) return;
-                  result.when(
-                    success: (_) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Transaksi dihapus.')),
-                      );
-                    },
-                    error: (failure) =>
-                        ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Gagal menghapus: ${failure.message}'),
-                      ),
-                    ),
-                  );
-                }
-              },
+              onSelected: (_) => _deleteTransaction(
+                requireReason: currentRole == UserRole.kasir,
+              ),
               itemBuilder: (menuContext) => [
                 const PopupMenuItem(
                   value: 'delete',
@@ -1564,7 +1693,13 @@ class _TransactionDetailScreenState
                         : '-',
                   ),
                   const Divider(height: 28),
-                  TransactionServiceLines(transaction: _transaction),
+                  TransactionServiceLines(
+                    transaction: _transaction,
+                    onComplete: canProcess &&
+                            _transaction.laundryStatus != LaundryStatus.collected
+                        ? _completeService
+                        : null,
+                  ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -1636,6 +1771,8 @@ class _TransactionDetailScreenState
           const SizedBox(height: 12),
           TransactionPaymentHistory(transaction: _transaction),
           const SizedBox(height: 12),
+          _PrintReceiptButton(transaction: _transaction),
+          const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: _transaction.customerPhone.isNotEmpty
                 ? () async {
@@ -1645,7 +1782,7 @@ class _TransactionDetailScreenState
                           'Halo ${_transaction.customerName}, mengenai transaksi ${_transaction.invoice} Anda.',
                     );
                     if (context.mounted && !opened) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      TopNotice.of(context).showTopNotice(
                         const SnackBar(
                           content: Text(
                             'Nomor WhatsApp tidak valid atau aplikasi tidak tersedia.',
@@ -1704,7 +1841,7 @@ class _CollectionSettlementScreenState
   PaymentEntry? _failedPayment;
 
   void _returnToCollectionSearch(String message) {
-    final messenger = ScaffoldMessenger.of(context);
+    final messenger = TopNotice.of(context);
     final navigator = Navigator.of(context);
     ref.read(transactionListRefreshProvider.notifier).state++;
     ref.invalidate(transactionDetailProvider(_transaction.id));
@@ -1738,9 +1875,7 @@ class _CollectionSettlementScreenState
         }
       }
     }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    messenger.showTopNotice(SnackBar(content: Text(message)));
   }
 
   @override
@@ -1783,8 +1918,8 @@ class _CollectionSettlementScreenState
             if (_selectedIds.isEmpty) _selectedIds.addAll(ready);
           });
         },
-        error: (failure) => ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(failure.message))));
+        error: (failure) => TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(failure.message))));
   }
 
   Future<void> _completeCollection() async {
@@ -1829,7 +1964,7 @@ class _CollectionSettlementScreenState
             ? 'Seluruh layanan berhasil diambil.'
             : 'Layanan terpilih berhasil diambil. Layanan lainnya tetap pada transaksi ini.');
       },
-      error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+      error: (failure) => TopNotice.of(context).showTopNotice(
         SnackBar(content: Text(failure.message)),
       ),
     );
@@ -1866,7 +2001,7 @@ class _CollectionSettlementScreenState
         _returnToCollectionSearch(
             'Pembayaran berhasil dicatat. Barang tidak otomatis diambil.');
       },
-      error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+      error: (failure) => TopNotice.of(context).showTopNotice(
         SnackBar(content: Text(failure.message)),
       ),
     );
@@ -2065,7 +2200,7 @@ class _PrintReceiptButton extends ConsumerWidget {
     final isPrinting = ref.watch(receiptPrintingProvider);
     final isSharing = ref.watch(receiptSharingProvider);
     final isBusy = isPrinting || isSharing;
-    return FloatingActionButton.extended(
+    return FilledButton.tonalIcon(
       onPressed: isBusy ? null : () => _chooseReceiptAction(context, ref),
       icon: isBusy
           ? const SizedBox(
@@ -2090,7 +2225,7 @@ class _PrintReceiptButton extends ConsumerWidget {
       settings = await ref.read(laundrySettingsProvider.future);
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        TopNotice.of(context).showTopNotice(const SnackBar(
             content: Text('Pengaturan usaha belum dapat dimuat. Silakan coba lagi.')));
       }
       return;
@@ -2165,7 +2300,7 @@ class _PrintReceiptButton extends ConsumerWidget {
       await ref.read(printerDeviceServiceProvider).ensureReady();
     } on PrinterException catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           SnackBar(content: Text(error.message)),
         );
       }
@@ -2180,7 +2315,7 @@ class _PrintReceiptButton extends ConsumerWidget {
             paperSize: settings?.paperSize ?? '58 mm',
           );
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         SnackBar(
           content: Text(
             result
@@ -2191,8 +2326,8 @@ class _PrintReceiptButton extends ConsumerWidget {
       );
     } on PrinterException catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        TopNotice.of(context)
+            .showTopNotice(SnackBar(content: Text(error.message)));
       }
     } finally {
       ref.read(receiptPrintingProvider.notifier).state = false;
@@ -2232,7 +2367,7 @@ class _PrintReceiptButton extends ConsumerWidget {
         ),
       );
       if (!opened && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(
             content: Text(
               'WhatsApp tidak tersedia. Pastikan aplikasi WhatsApp telah terpasang.',
@@ -2242,7 +2377,7 @@ class _PrintReceiptButton extends ConsumerWidget {
       }
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(
               content: Text('Bon gambar gagal dibuat untuk dibagikan.')),
         );

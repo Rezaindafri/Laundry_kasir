@@ -165,7 +165,7 @@ void main() {
     const ServerFailure('Terjadi kesalahan, coba lagi nanti.'),
     const ServerFailure('Terlalu banyak percobaan login. Coba lagi sebentar.'),
   ]) {
-    testWidgets('Login shows inline notice and snackbar: ${failure.message}',
+    testWidgets('Login shows inline notice and top banner: ${failure.message}',
         (tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -188,7 +188,7 @@ void main() {
       await tester.tap(find.text('Masuk'));
       await tester.pumpAndSettle();
       expect(find.text(failure.message), findsNWidgets(2));
-      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.byType(MaterialBanner), findsOneWidget);
       expect(find.text('Masuk'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

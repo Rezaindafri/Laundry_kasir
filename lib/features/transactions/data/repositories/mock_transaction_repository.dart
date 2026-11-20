@@ -117,7 +117,13 @@ class MockTransactionRepository implements TransactionRepository {
   }
 
   @override
-  Future<Result<void>> delete(String id) async {
+  Future<Result<TransactionEntity>> completeService(
+      String id, String detailId) async =>
+      const Error(ServerFailure(
+          'Penyelesaian per layanan memerlukan backend Laravel aktif.'));
+
+  @override
+  Future<Result<void>> delete(String id, {String? reason}) async {
     _items.removeWhere((item) => item.id == id);
     return const Success(null);
   }

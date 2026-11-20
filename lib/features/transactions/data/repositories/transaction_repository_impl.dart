@@ -132,9 +132,22 @@ class TransactionRepositoryImpl implements TransactionRepository {
   }
 
   @override
-  Future<Result<void>> delete(String id) async {
+  Future<Result<TransactionEntity>> completeService(
+      String id, String detailId) async {
     try {
-      await remoteDataSource.deleteTransaction(id);
+      final updated = await remoteDataSource.completeService(id, detailId);
+      return Success(updated.toEntity());
+    } on ServerException catch (error) {
+      return Error(ServerFailure(error.message));
+    } catch (_) {
+      return const Error(UnknownFailure());
+    }
+  }
+
+  @override
+  Future<Result<void>> delete(String id, {String? reason}) async {
+    try {
+      await remoteDataSource.deleteTransaction(id, reason: reason);
       return const Success(null);
     } on ServerException catch (error) {
       return Error(ServerFailure(error.message));

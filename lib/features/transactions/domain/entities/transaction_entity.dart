@@ -117,6 +117,11 @@ class TransactionEntity extends Equatable {
         ];
   String get serviceSummary =>
       serviceLines.map((line) => line.name).join(' + ');
+  Iterable<TransactionLineEntity> get pendingServiceLines =>
+      laundryStatus == LaundryStatus.collected
+          ? const []
+          : details.where((line) => line.canCompleteManually);
+
   bool get hasReadyItems => serviceLines.any((line) => line.isReady);
   bool get isProcessing =>
       serviceLines.any((line) => !line.isReady && !line.isCollected);
@@ -249,6 +254,8 @@ class TransactionLineEntity extends Equatable {
       this.hasKnownTiming = true});
 
   bool get isCollected => status == LaundryStatus.collected;
+  bool get canCompleteManually =>
+      (int.tryParse(id) ?? 0) > 0 && !isCollected && !isReady;
   bool get isReady =>
       status == LaundryStatus.completed || status == LaundryStatus.late;
 

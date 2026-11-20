@@ -135,10 +135,12 @@ abstract class AppTheme {
           color: AppColors.textOnPrimary,
         ),
       ),
-      pageTransitionsTheme: const PageTransitionsTheme(
+      pageTransitionsTheme: PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android:
+              const PageTransitionsTheme().builders[TargetPlatform.iOS]!,
+          TargetPlatform.iOS:
+              const PageTransitionsTheme().builders[TargetPlatform.iOS]!,
         },
       ),
     );

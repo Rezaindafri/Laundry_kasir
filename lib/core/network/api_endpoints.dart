@@ -30,6 +30,7 @@ abstract class ApiEndpoints {
   static String transactionById(String id) => '/transactions/$id';
   static String updateStatus(String id) => '/transactions/$id/status';
   static String payment(String id) => '/transactions/$id/payment';
+  static String completeService(String id) => '/transactions/$id/complete-service';
   static String collection(String id) => '/transactions/$id/collection';
   static String transactionProof(String id) => '/transactions/$id/proof';
 

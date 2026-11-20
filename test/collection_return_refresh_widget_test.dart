@@ -120,6 +120,26 @@ class _Repository extends MockTransactionRepository {
         : [current]));
   }
 
+  final completedLines = <String>[];
+
+  @override
+  Future<Result<TransactionEntity>> completeService(String id, String detailId) async {
+    completedLines.add(detailId);
+    final current = order!;
+    order = _order(paid: current.paidAmount, lines: [
+      for (final line in current.details)
+        if (line.id == detailId)
+          TransactionLineEntity(
+            id: line.id, serviceId: line.serviceId, name: line.name,
+            quantity: line.quantity, unit: line.unit,
+            unitPrice: line.unitPrice, subtotal: line.subtotal,
+            status: LaundryStatus.completed,
+          )
+        else line,
+    ]);
+    return Success(order!);
+  }
+
   @override
   Future<Result<TransactionEntity>> pay({
     required TransactionEntity transaction,
@@ -252,6 +272,49 @@ Future<GoRouter> _openRouted(WidgetTester tester, _Repository repository,
 }
 
 void main() {
+  testWidgets('completion list confirms and completes only a pending service', (tester) async {
+    final repository = _Repository(_order(multiple: true, lines: [
+      const TransactionLineEntity(
+        id: '1', serviceId: '1', name: 'Cuci sudah siap',
+        quantity: 1, unit: 'kg', unitPrice: 10000, subtotal: 10000,
+        status: LaundryStatus.completed,
+      ),
+      const TransactionLineEntity(
+        id: '2', serviceId: '2', name: 'Setrika masih diproses',
+        quantity: 1, unit: 'kg', unitPrice: 10000, subtotal: 10000,
+      ),
+    ]));
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        sessionProvider.overrideWith(() => _Session(UserRole.kasir)),
+        transactionRepositoryProvider.overrideWithValue(repository),
+      ],
+      child: const MaterialApp(home: TransactionsScreen(completionMode: true)),
+    ));
+    await tester.pumpAndSettle();
+    expect(repository.queries.single['pending_service_completion'], 1);
+    expect(find.text('INV-A'), findsOneWidget);
+    expect(find.text('Cuci sudah siap'), findsNothing);
+    await tester.tap(find.text('Selesaikan Proses'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Setrika masih diproses pada bon INV-A'), findsOneWidget);
+    await tester.tap(find.text('Batal'));
+    await tester.pumpAndSettle();
+    expect(repository.completedLines, isEmpty);
+
+    await tester.tap(find.text('Selesaikan Proses'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ya, Selesaikan Proses'));
+    await tester.pumpAndSettle();
+
+    expect(repository.completedLines, ['2']);
+    expect(repository.order!.paidAmount, 0);
+    expect(repository.order!.details.every((line) => !line.isCollected), isTrue);
+    expect(find.textContaining('Layanan siap diambil.'), findsOneWidget);
+    expect(find.text('Tidak ada layanan yang masih diproses.'), findsOneWidget);
+  });
+
+
   setUpAll(() => initializeDateFormatting('id_ID'));
 
   for (final role in [UserRole.owner, UserRole.kasir]) {

@@ -10,6 +10,7 @@ import '../../../../core/config/theme/app_text_styles.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/utils/business_time.dart';
 import '../../../auth/domain/entities/user_entity.dart';
+import '../../../audit/presentation/screens/audit_logs_screen.dart';
 import '../../../master_data/domain/entities/customer_entity.dart';
 import '../../../master_data/presentation/providers/master_data_providers.dart';
 import '../../../transactions/domain/entities/transaction_entity.dart';
@@ -153,6 +154,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
       title: 'Dashboard Owner',
       body: RefreshIndicator(
         onRefresh: () async {
+          refreshCashierActivity(ref);
           _invalidateFinancialSnapshots();
           await ref.read(ownerDashboardProvider.notifier).refresh();
           ref.invalidate(transactionsProvider);
@@ -338,6 +340,13 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
                                   .every((point) => point.value <= 0)
                           ? _EmptyRevenueState(currency: currency)
                           : _RevenueChart(points: displayChartSeries),
+                ),
+                const SizedBox(height: 14),
+                CashierActivityCard(
+                  onOpen: () async {
+                    await context.push(AppRoutes.auditLogs);
+                    if (mounted) refreshCashierActivity(ref);
+                  },
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(

@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -123,7 +124,7 @@ class PaymentDestinationInfo extends ConsumerWidget {
                         await Clipboard.setData(ClipboardData(
                             text: destination.accountNumber ?? ''));
                         if (context.mounted)
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          TopNotice.of(context).showTopNotice(
                               const SnackBar(
                                   content: Text('Nomor rekening disalin.')));
                       }),

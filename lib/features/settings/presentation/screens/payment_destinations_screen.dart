@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -38,11 +39,11 @@ class PaymentDestinationsScreen extends ConsumerWidget {
       ref.invalidate(paymentDestinationsProvider);
       if (id != null) ref.invalidate(paymentDestinationImageProvider(id));
       if (context.mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
             const SnackBar(content: Text('Tujuan pembayaran tersimpan.')));
     } catch (_) {
       if (context.mounted)
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        TopNotice.of(context).showTopNotice(const SnackBar(
             content: Text(
                 'Tujuan pembayaran gagal disimpan. Periksa data/gambar dan coba lagi.')));
     }

@@ -1,3 +1,4 @@
+import 'top_notice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,10 +24,9 @@ Future<T> withNavigationWriteLock<T>(
 }
 
 void showSavingNavigationNotice(BuildContext context) {
-  final messenger = ScaffoldMessenger.maybeOf(context);
+  final messenger = TopNotice.maybeOf(context);
   messenger
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text(savingNavigationMessage)));
+    ?.showTopNotice(const SnackBar(content: Text(savingNavigationMessage)));
 }
 
 /// Popup/search routes above this page still receive Back first. Once a write

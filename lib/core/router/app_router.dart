@@ -296,7 +296,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ref.read(sessionProvider).valueOrNull?.role == UserRole.owner
                     ? null
                     : AppRoutes.dashboard,
-            builder: (context, state) => const AuditLogsScreen(),
+            builder: (context, state) => AuditLogsScreen(
+              cashierOnly: state.uri.queryParameters['cashier'] == 'true',
+            ),
           ),
           GoRoute(
             path: AppRoutes.expenses,

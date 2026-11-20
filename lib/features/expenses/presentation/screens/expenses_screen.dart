@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/widgets/unsaved_changes_guard.dart';
 import 'package:flutter/services.dart';
@@ -114,7 +115,7 @@ class ExpensesScreen extends ConsumerWidget {
               ref.read(expensesProvider.notifier).save(input, id: expense?.id));
       _invalidateFinancialViews(ref);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         SnackBar(
           content: Text(expense == null
               ? 'Pengeluaran berhasil dicatat.'
@@ -123,11 +124,11 @@ class ExpensesScreen extends ConsumerWidget {
       );
     } on ServerException catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+      TopNotice.of(context)
+          .showTopNotice(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         const SnackBar(content: Text('Pengeluaran tidak dapat disimpan.')),
       );
     }
@@ -165,16 +166,16 @@ class ExpensesScreen extends ConsumerWidget {
           ref, () => ref.read(expensesProvider.notifier).remove(expense.id));
       _invalidateFinancialViews(ref);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         const SnackBar(content: Text('Pengeluaran berhasil dihapus.')),
       );
     } on ServerException catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+      TopNotice.of(context)
+          .showTopNotice(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         const SnackBar(content: Text('Pengeluaran tidak dapat dihapus.')),
       );
     }

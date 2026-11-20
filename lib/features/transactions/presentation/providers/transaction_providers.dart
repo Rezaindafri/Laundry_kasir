@@ -138,13 +138,35 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionEntity>> {
     return result;
   }
 
-  Future<Result<void>> deleteTransaction(String id) async {
-    final result = await ref.read(transactionRepositoryProvider).delete(id);
+  Future<Result<TransactionEntity>> completeService(
+      String id, String detailId) async {
+    final result = await ref.read(transactionRepositoryProvider)
+        .completeService(id, detailId);
+    result.when(
+      success: (item) {
+        final items = state.valueOrNull;
+        if (items != null) {
+          state = AsyncData([
+            for (final current in items) current.id == id ? item : current,
+          ]);
+        }
+        ref.invalidate(transactionDetailProvider(id));
+        ref.read(transactionListRefreshProvider.notifier).state++;
+      },
+      error: (_) {},
+    );
+    return result;
+  }
+
+  Future<Result<void>> deleteTransaction(String id, {String? reason}) async {
+    final result = await ref.read(transactionRepositoryProvider)
+        .delete(id, reason: reason);
     result.when(
       success: (_) {
         final items =
             (state.valueOrNull ?? []).where((item) => item.id != id).toList();
         state = AsyncData(items);
+        ref.read(transactionListRefreshProvider.notifier).state++;
       },
       error: (_) {},
     );

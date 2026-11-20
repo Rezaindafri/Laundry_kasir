@@ -162,15 +162,9 @@ class ThermalReceiptService {
         styles: const PosStyles(align: PosAlign.center),
       ),
     );
-    bytes.addAll(
-      generator.text(
-        'Terima kasih.',
-        styles: const PosStyles(align: PosAlign.center),
-      ),
-    );
     // cut() from esc_pos_utils_plus inserts FIVE empty lines, in addition to
     // the former feed(3). Send a cutter command without that hidden padding.
-    bytes.addAll(generator.feed(2));
+    bytes.addAll(generator.feed(1));
     bytes.addAll([0x1d, 0x56, 0x00]);
     return bytes;
   }

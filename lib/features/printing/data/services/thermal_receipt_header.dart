@@ -12,7 +12,7 @@ Future<List<int>> buildThermalReceiptHeader({
   required String customerPhone,
   required int width,
 }) async {
-  final qrLimit = width == 384 ? 144.0 : 176.0;
+  final qrLimit = width == 384 ? 108.0 : 132.0;
   final validated = QrValidator.validate(
       data: invoice,
       version: QrVersions.auto,
@@ -20,11 +20,13 @@ Future<List<int>> buildThermalReceiptHeader({
   final qr = validated.qrCode;
   if (qr == null) throw StateError('Kode QR struk tidak valid.');
   // Whole printer dots per module prevent blurred/uneven QR edges.
-  final moduleDots = (qrLimit / qr.moduleCount).floor();
-  if (moduleDots < 1) throw StateError('Kode QR terlalu panjang untuk struk.');
+  final moduleDots = math.max(3, (qrLimit / qr.moduleCount).floor());
   final qrSize = (moduleDots * qr.moduleCount).toDouble();
   final quiet = (moduleDots * 4).toDouble();
-  final textX = qrSize + quiet * 2 + 10;
+  final textX = qrSize + quiet * 2 + 8;
+  if (textX >= width - 24) {
+    throw StateError('Kode QR terlalu panjang untuk struk.');
+  }
   final text = TextPainter(
     text: TextSpan(
       style: TextStyle(
@@ -42,7 +44,7 @@ Future<List<int>> buildThermalReceiptHeader({
     ),
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: width - textX - 4);
-  final height = math.max(qrSize + quiet * 2, text.height + 12).ceil();
+  final height = math.max(qrSize + quiet * 2, text.height + 4).ceil();
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)
     ..drawRect(Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),

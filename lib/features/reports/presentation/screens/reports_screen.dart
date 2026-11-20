@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -363,12 +364,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         fileNameOverrides: [fileName],
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         const SnackBar(content: Text('CSV siap disimpan atau dibagikan.')),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         const SnackBar(content: Text('Gagal mengekspor laporan CSV.')),
       );
     } finally {

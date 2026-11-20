@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -139,7 +140,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       ),
                       onLongPress: isKasir
                           ? () {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              TopNotice.of(context).showTopNotice(
                                 const SnackBar(
                                   content: Text(
                                     'Kasir tidak memiliki hak untuk menghapus pelanggan.',
@@ -208,10 +209,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   void _showResult(
           BuildContext context, dynamic result, String successMessage) =>
       result.when(
-          success: (_) => ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(successMessage))),
-          error: (Failure failure) => ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(failure.message))));
+          success: (_) => TopNotice.of(context)
+              .showTopNotice(SnackBar(content: Text(successMessage))),
+          error: (Failure failure) => TopNotice.of(context)
+              .showTopNotice(SnackBar(content: Text(failure.message))));
 }
 
 /// Owns its controllers for the entire lifetime of the bottom-sheet route.

@@ -77,12 +77,12 @@ void main() {
 
   for (final paper in ['58 mm', '80 mm']) {
     test(
-        'compact $paper receipt resets first, keeps totals, only feeds two lines',
+        'compact $paper receipt resets first, keeps totals, only feeds one line',
         () async {
       final bytes = await ThermalReceiptService().buildReceipt(_transaction,
           businessName: 'Usaha Fixture', paperSize: paper);
       expect(bytes.take(2), [0x1b, 0x40]);
-      expect(bytes.sublist(bytes.length - 6), [0x1b, 0x64, 2, 0x1d, 0x56, 0]);
+      expect(bytes.sublist(bytes.length - 6), [0x1b, 0x64, 1, 0x1d, 0x56, 0]);
       final body = String.fromCharCodes(bytes);
       expect(body, contains('INV-20261022-0001'));
       expect(body, contains('Rp100.000'));

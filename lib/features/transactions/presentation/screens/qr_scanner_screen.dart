@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -105,7 +106,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
           ? capture!.barcodes.first.rawValue
           : null;
       if (invoice == null || invoice.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           const SnackBar(content: Text('QR tidak ditemukan pada gambar.')),
         );
         return;
@@ -113,7 +114,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
       _openTransaction(invoice);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      TopNotice.of(context).showTopNotice(
         const SnackBar(content: Text('Gambar tidak dapat dipindai.')),
       );
     } finally {
@@ -150,7 +151,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
       },
       error: (failure) {
         requestFailed = true;
-        ScaffoldMessenger.of(context).showSnackBar(
+        TopNotice.of(context).showTopNotice(
           SnackBar(content: Text(failure.message)),
         );
       },
@@ -161,7 +162,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
     }
     if (transaction == null) {
       setState(() => _loadingTransaction = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      TopNotice.of(context).showTopNotice(const SnackBar(
         content: Text('Transaksi dengan kode tersebut tidak ditemukan.'),
       ));
       return;

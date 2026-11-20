@@ -96,19 +96,27 @@ void main() {
       'parallel failures show one bounded notification and unsubscribe on disposal',
       (tester) async {
     final events = StreamController<RequestFailureNotice>.broadcast();
-    final messenger = GlobalKey<ScaffoldMessengerState>();
+    final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(MaterialApp(
-        scaffoldMessengerKey: messenger,
+        navigatorKey: navigator,
         home: RequestFailureListener(
             events: events.stream,
-            messengerKey: messenger,
-            child: const Scaffold(body: Text('Halaman fixture')))));
+            navigatorKey: navigator,
+            child: Scaffold(
+              appBar: AppBar(title: const Text('Header')),
+              body: const Text('Halaman fixture'),
+            ))));
     for (var i = 0; i < 5; i++) {
       events.add(const RequestFailureNotice(isWrite: false));
     }
     await tester.pumpAndSettle();
-    expect(find.text('Gagal memuat data. Periksa koneksi dan coba lagi.'),
-        findsOneWidget);
+    final notice = find.text('Gagal memuat data. Periksa koneksi dan coba lagi.');
+    expect(notice, findsOneWidget);
+    expect(tester.getTopLeft(notice).dy,
+        lessThan(tester.getTopLeft(find.text('Halaman fixture')).dy));
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(notice, findsNothing);
     await tester.pumpWidget(const SizedBox());
     events.add(const RequestFailureNotice(isWrite: true));
     await tester.pump();

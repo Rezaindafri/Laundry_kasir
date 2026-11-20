@@ -14,3 +14,11 @@ linter:
     prefer_const_literals_to_create_immutables: true
     sort_child_properties_last: true
     require_trailing_commas: true
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - macos/**
+    - linux/**

@@ -12,15 +12,19 @@ class TransactionServiceLines extends StatelessWidget {
       this.selectedIds,
       this.onToggle,
       this.enabled = true,
+      this.onComplete,
+      this.onlyPending = false,
       super.key});
   final TransactionEntity transaction;
   final Set<String>? selectedIds;
   final void Function(String id, bool selected)? onToggle;
   final bool enabled;
+  final ValueChanged<TransactionLineEntity>? onComplete;
+  final bool onlyPending;
 
   @override
   Widget build(BuildContext context) => Column(
-      children: transaction.serviceLines
+      children: (onlyPending ? transaction.pendingServiceLines : transaction.serviceLines)
           .map((line) => Card(
                 child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -62,6 +66,12 @@ class TransactionServiceLines extends StatelessWidget {
                                             : 'Masih diproses',
                                     style:
                                         Theme.of(context).textTheme.bodySmall),
+                                if (onComplete != null && line.canCompleteManually)
+                                  TextButton.icon(
+                                    onPressed: enabled ? () => onComplete!(line) : null,
+                                    icon: const Icon(Icons.check_circle_outline),
+                                    label: const Text('Selesaikan Proses'),
+                                  ),
                                 if (line.hasProofImage && line.id.isNotEmpty)
                                   _LineProofButton(
                                       transactionId: transaction.id,

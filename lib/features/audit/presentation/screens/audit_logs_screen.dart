@@ -14,6 +14,7 @@ class _AuditEntry {
   final String subjectType;
   final String subjectId;
   final String actor;
+  final String? actorRole;
   final DateTime? createdAt;
   final Map<String, dynamic> metadata;
 
@@ -22,27 +23,32 @@ class _AuditEntry {
     required this.subjectType,
     required this.subjectId,
     required this.actor,
+    required this.actorRole,
     required this.createdAt,
     required this.metadata,
   });
 
   factory _AuditEntry.fromJson(Map<String, dynamic> json) {
-    final actor = json['actor'];
-    final metadata = json['metadata'];
+    final metadata = _object(json['metadata']);
+    final snapshot = _object(metadata['actor_snapshot']);
+    final actor = snapshot.isNotEmpty ? snapshot : _object(json['actor']);
     return _AuditEntry(
       action: json['action']?.toString() ?? '-',
       subjectType: json['subject_type']?.toString() ?? '-',
       subjectId: json['subject_id']?.toString() ?? '-',
-      actor: actor is Map
-          ? '${actor['name']?.toString() ?? 'Sistem'}'
-              '${actor['role'] == null ? '' : ' (${actor['role']})'}'
-          : 'Sistem',
+      actor: actor.isNotEmpty
+          ? '${actor['name'] ?? 'Akun'}'
+              '${actor['username'] == null ? '' : ' (@${actor['username']})'}'
+          : json['actor_id'] == null ? 'Sistem' : 'Akun #${json['actor_id']}',
+      actorRole: (snapshot['role'] ?? _object(json['actor'])['role'])?.toString(),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
-      metadata: metadata is Map
-          ? Map<String, dynamic>.from(metadata)
-          : const <String, dynamic>{},
+      metadata: metadata,
     );
   }
+
+  String? get reason => metadata['reason']?.toString();
+  String? get serviceName => metadata['service_name']?.toString();
+  bool get isDeletion => action == 'transaction.deleted';
 
   Map<String, dynamic> get before => _object(metadata['before']);
   Map<String, dynamic> get after => _object(metadata['after']);
@@ -79,14 +85,21 @@ class _AuditLogPage {
   });
 }
 
-final _auditLogsProvider =
-    FutureProvider.family<_AuditLogPage, int>((ref, page) async {
+typedef _AuditQuery = ({int page, bool cashierOnly, bool preview});
+
+final _auditLogsProvider = FutureProvider.autoDispose
+    .family<_AuditLogPage, _AuditQuery>((ref, query) async {
   // Menjamin data audit dimuat ulang saat akun Owner berganti.
   ref.watch(currentSessionUserIdProvider);
   try {
     final response = await DioClient().dio.get(
       ApiEndpoints.auditLogs,
-      queryParameters: {'per_page': 30, 'page': page},
+      queryParameters: {
+        'per_page': query.preview ? 4 : 30,
+        'page': query.page,
+        if (query.cashierOnly) 'cashier_activity': 1,
+      },
+      options: query.preview ? Options(extra: {'silentFailure': true}) : null,
     );
     final payload = response.data;
     final rows = payload is Map && payload['data'] is List
@@ -99,8 +112,10 @@ final _auditLogsProvider =
       items: rows
           .whereType<Map>()
           .map((row) => _AuditEntry.fromJson(Map<String, dynamic>.from(row)))
+          .where((entry) => !query.cashierOnly ||
+              (entry.subjectType == 'transaction' && entry.actorRole == 'kasir'))
           .toList(),
-      currentPage: (meta['current_page'] as num?)?.toInt() ?? page,
+      currentPage: (meta['current_page'] as num?)?.toInt() ?? query.page,
       lastPage: (meta['last_page'] as num?)?.toInt() ?? 1,
       total: (meta['total'] as num?)?.toInt() ?? rows.length,
     );
@@ -112,7 +127,9 @@ final _auditLogsProvider =
 });
 
 class AuditLogsScreen extends ConsumerStatefulWidget {
-  const AuditLogsScreen({super.key});
+  const AuditLogsScreen({this.cashierOnly = false, super.key});
+
+  final bool cashierOnly;
 
   @override
   ConsumerState<AuditLogsScreen> createState() => _AuditLogsScreenState();
@@ -121,29 +138,33 @@ class AuditLogsScreen extends ConsumerStatefulWidget {
 class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
   int _page = 1;
   late final bool _cached;
+  _AuditQuery _query(int page) =>
+      (page: page, cashierOnly: widget.cashierOnly, preview: false);
 
   @override
   void initState() {
     super.initState();
-    _cached = ref.exists(_auditLogsProvider(1));
+    _cached = ref.exists(_auditLogsProvider(_query(1)));
   }
 
   Future<void> _refresh() async {
     setState(() => _page = 1);
-    ref.invalidate(_auditLogsProvider(1));
-    await ref.read(_auditLogsProvider(1).future);
+    ref.invalidate(_auditLogsProvider(_query(1)));
+    await ref.read(_auditLogsProvider(_query(1)).future);
   }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(sessionProvider).valueOrNull;
-    final logs = ref.watch(_auditLogsProvider(_page));
+    final logs = ref.watch(_auditLogsProvider(_query(_page)));
     return PageVisibilityRefresh(refreshOnMount: _cached, onVisible: () async {
-      ref.invalidate(_auditLogsProvider(_page));
-      await ref.read(_auditLogsProvider(_page).future);
+      ref.invalidate(_auditLogsProvider(_query(_page)));
+      await ref.read(_auditLogsProvider(_query(_page)).future);
     }, child: Scaffold(
       drawer: user == null ? null : AppNavigationDrawer(user: user),
-      appBar: AppBar(title: const Text('Riwayat Perubahan')),
+      appBar: AppBar(title: Text(
+        widget.cashierOnly ? 'Aktivitas Kasir' : 'Riwayat Perubahan',
+      )),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: logs.when(
@@ -220,14 +241,18 @@ class _AuditTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
         onTap: onTap,
-        leading: Icon(entry.subjectType == 'transaction'
+        leading: entry.isDeletion
+            ? Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error)
+            : Icon(entry.subjectType == 'transaction'
             ? Icons.receipt_long_outlined
             : entry.subjectType == 'expense'
                 ? Icons.trending_down_outlined
                 : Icons.manage_accounts_outlined),
         title: Text(_actionLabel(entry.action)),
         subtitle: Text(
-          '${entry.subjectLabel}\n${entry.actor} • ${_dateLabel(entry.createdAt)}',
+          '${entry.subjectLabel}\n${entry.actor} • ${_dateLabel(entry.createdAt)}'
+          '${entry.reason == null ? '' : '\nAlasan: ${entry.reason}'}'
+          '${entry.serviceName == null ? '' : '\nLayanan: ${entry.serviceName}'}',
         ),
         isThreeLine: true,
         trailing: const Icon(Icons.chevron_right_rounded),
@@ -252,6 +277,8 @@ void _showDetails(BuildContext context, _AuditEntry entry) {
                 style: Theme.of(sheetContext).textTheme.titleLarge),
             const SizedBox(height: 6),
             Text(entry.subjectLabel),
+            if (entry.reason != null) Text('Alasan: ${entry.reason}'),
+            if (entry.serviceName != null) Text('Layanan: ${entry.serviceName}'),
             Text('${entry.actor} • ${_dateLabel(entry.createdAt)}'),
             const SizedBox(height: 20),
             Text('Perubahan',
@@ -334,6 +361,7 @@ String? _auditDisplay(dynamic value) {
           '${line['service_name'] ?? 'Layanan'} (#${line['id']}): ${line['qty']} ${line['service_unit'] ?? ''}; '
           'harga ${line['price']}; subtotal ${line['subtotal']}; '
           '${line['is_collected'] == true ? 'Sudah diambil' : 'Belum diambil'}'
+          '${line['manually_completed_at'] == null ? '' : ' · Diselesaikan manual'}'
           '${line['collected_at'] == null ? '' : ' · ${_dateLabel(DateTime.tryParse(line['collected_at'].toString()))}'}')
       .join('\n');
 }
@@ -349,6 +377,7 @@ String _actionLabel(String action) => switch (action) {
       'transaction.created' => 'Transaksi dibuat',
       'transaction.updated' => 'Transaksi diperbarui',
       'transaction.status_updated' => 'Status laundry diperbarui',
+      'transaction.service_completed_manually' => 'Layanan diselesaikan manual',
       'transaction.payment_recorded' => 'Pembayaran dicatat',
       'transaction.collected' => 'Laundry diambil',
       'transaction.partially_collected' => 'Sebagian layanan diambil',
@@ -368,3 +397,60 @@ String _actionLabel(String action) => switch (action) {
       'expense.deleted' => 'Pengeluaran dihapus',
       _ => action,
     };
+
+const _cashierPreview = (page: 1, cashierOnly: true, preview: true);
+
+void refreshCashierActivity(WidgetRef ref) {
+  ref.invalidate(_auditLogsProvider(_cashierPreview));
+}
+
+class CashierActivityCard extends ConsumerWidget {
+  const CashierActivityCard({required this.onOpen, super.key});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activity = ref.watch(_auditLogsProvider(_cashierPreview));
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            title: const Text('Aktivitas Kasir'),
+            trailing: TextButton(
+              onPressed: onOpen,
+              child: const Text('Riwayat audit'),
+            ),
+          ),
+          activity.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (_, __) =>
+                const ListTile(subtitle: Text('Aktivitas gagal dimuat.')),
+            data: (page) => page.items.isEmpty
+                ? const ListTile(subtitle: Text('Belum ada aktivitas kasir.'))
+                : Column(
+                    children: [
+                      for (final entry in page.items)
+                        ListTile(
+                          onTap: () => _showDetails(context, entry),
+                          leading: Icon(
+                            entry.isDeletion ? Icons.delete_outline : Icons.receipt_long_outlined,
+                            color: entry.isDeletion ? Theme.of(context).colorScheme.error : null,
+                          ),
+                          title: Text(entry.subjectLabel),
+                          subtitle: Text(
+                            '${_actionLabel(entry.action)} oleh ${entry.actor}'
+                            '${entry.reason == null ? '' : '\nAlasan: ${entry.reason}'}',
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}

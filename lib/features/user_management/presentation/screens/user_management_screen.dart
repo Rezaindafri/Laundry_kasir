@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/widgets/unsaved_changes_guard.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -427,7 +428,7 @@ Future<void> _showUserForm(
             .saveUser(result.user, password: result.password));
     if (context.mounted) {
       saved.when(
-        success: (_) => ScaffoldMessenger.of(context).showSnackBar(
+        success: (_) => TopNotice.of(context).showTopNotice(
           SnackBar(
             content: Text(
               user == null
@@ -436,7 +437,7 @@ Future<void> _showUserForm(
             ),
           ),
         ),
-        error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        error: (failure) => TopNotice.of(context).showTopNotice(
           SnackBar(content: Text(failure.message)),
         ),
       );
@@ -462,7 +463,7 @@ Future<void> _toggleStatus(
       () => ref.read(managedUsersProvider.notifier).toggleUserStatus(user.id));
   if (!context.mounted) return;
   result.when(
-    success: (_) => ScaffoldMessenger.of(context).showSnackBar(
+    success: (_) => TopNotice.of(context).showTopNotice(
       SnackBar(
         content: Text(
           user.isActive
@@ -471,7 +472,7 @@ Future<void> _toggleStatus(
         ),
       ),
     ),
-    error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+    error: (failure) => TopNotice.of(context).showTopNotice(
       SnackBar(content: Text(failure.message)),
     ),
   );
@@ -614,10 +615,10 @@ Future<void> _showCredentialEditor(
           ));
   if (!context.mounted) return;
   saved.when(
-    success: (_) => ScaffoldMessenger.of(context).showSnackBar(
+    success: (_) => TopNotice.of(context).showTopNotice(
       const SnackBar(content: Text('Kredensial akun berhasil diperbarui.')),
     ),
-    error: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+    error: (failure) => TopNotice.of(context).showTopNotice(
       SnackBar(content: Text(failure.message)),
     ),
   );

@@ -30,7 +30,8 @@ abstract class TransactionRemoteDataSource {
     int? paymentAmount,
     String? paymentNote,
   });
-  Future<void> deleteTransaction(String id);
+  Future<TransactionModel> completeService(String id, String detailId);
+  Future<void> deleteTransaction(String id, {String? reason});
   Future<Uint8List> downloadProof(String id, {String? detailId});
 }
 
@@ -258,10 +259,34 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   }
 
   @override
-  Future<void> deleteTransaction(String id) async {
+  Future<TransactionModel> completeService(String id, String detailId) async {
+    try {
+      final response = await dio.post(
+        ApiEndpoints.completeService(id),
+        data: {'detail_id': detailId},
+        options: Options(headers: {'Accept': 'application/json'}),
+      );
+      return TransactionModel.fromJson(
+        (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+      );
+    } on DioException catch (error) {
+      final body = error.response?.data;
+      throw ServerException(
+        error.response?.statusCode == 404 && (body is! Map || body['status'] != 'error')
+            ? 'Layanan atau API penyelesaian tidak ditemukan. Muat ulang transaksi dan pastikan server sudah diperbarui.'
+            : (body is Map ? body['message']?.toString() : null) ??
+                'Gagal menyelesaikan layanan.',
+        statusCode: error.response?.statusCode,
+      );
+    }
+  }
+
+  @override
+  Future<void> deleteTransaction(String id, {String? reason}) async {
     try {
       await dio.delete(
         ApiEndpoints.transactionById(id),
+        data: reason == null ? null : {'reason': reason},
         options: Options(headers: {'Accept': 'application/json'}),
       );
     } on DioException catch (error) {

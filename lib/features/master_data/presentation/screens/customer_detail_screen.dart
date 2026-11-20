@@ -1,3 +1,4 @@
+import '../../../../core/widgets/top_notice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -66,7 +67,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                       message: 'Halo ${customer.name},',
                     );
                     if (context.mounted && !opened) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      TopNotice.of(context).showTopNotice(
                         const SnackBar(
                           content: Text(
                             'Nomor WhatsApp tidak valid atau aplikasi tidak tersedia.',
