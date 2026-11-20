@@ -64,6 +64,8 @@ Fitur yang telah terhubung ke Laravel:
 
 Scaffolding Android/iOS/web sudah ada. Tidak perlu membuat ulang proyek dengan flutter create.
 
+Konfigurasi build Android diselaraskan dengan Flutter 3.47.9: Gradle **8.14.3** (distribusi `bin`), AGP **8.11.1**, dan Kotlin **2.2.21**. Pemeriksaan kompatibilitas memakai JDK 21. Build pertama dapat mengunduh distribusi/dependensi dan membuat cache Gradle baru; cache sesi Kotlin `android/.kotlin/` tidak disimpan di Git. Buat ulang installer setelah perubahan kode dengan `flutter build apk --release`.
+
 Di Flutter:
 
 ~~~powershell
@@ -89,10 +91,11 @@ Scheduler terdaftar setiap menit di routes/console.php. Hosting perlu memanggil 
 | Flutter unit/widget | **213 lulus (20 November)**; termasuk 12 regresi baru audit/retry/WIB/refresh, nominal/grafik periode gagal dan notifikasi validasi atas; regresi layanan, printer/struk, pembayaran, navigasi dan auth tetap lulus |
 | Analisis Dart lib + test | **0 error, 6 warning lama** pada anotasi model auth; lint/hint gaya masih tersedia. Painter tak terpakai, cast/default berlebih, blok pelanggan lama yang dikomentari dan konfigurasi exclude analyzer sudah dibersihkan |
 | Composer audit lockfile (runtime dan seluruh paket) | **0 advisori**, setelah upgrade terarah tiga paket |
+| Build Android release (penyelarasan 20 November) | **Berhasil**, APK 74,3 MB; pemeriksaan Java/Gradle/AGP/Kotlin kompatibel. Label APK KarsaOne, package ID tetap. Masih ada peringatan versi mendatang, font dan target Java dependensi; APK belum diuji langsung di perangkat pada tahap ini |
 
 Tes UI memakai repository palsu, sedangkan tes API menjalankan Laravel dengan data sintetis. Belum ada pengujian end-to-end Flutter → server hosting nyata atau seluruh perangkat.
 
-Tahap 20 November tidak menjalankan migrasi pada database nyata, tidak reset/menghapus data, tidak mengubah kredensial/config produksi, serta tidak build APK/Gradle atau mengunduh dependensi. Deploy kode Laravel yang berubah dan build APK baru diperlukan sebelum uji integrasi hosting/perangkat. Fitur manual dari commit sebelumnya memerlukan migrasi nullable `2026_11_20_000001_add_manual_completion_to_transaction_details.php`; keberadaannya di hosting belum diperiksa atau diterapkan pada tahap ini. Jangan memakai `migrate:fresh`/`db:wipe`.
+Tahap perbaikan status/audit 20 November tidak menjalankan migrasi pada database nyata, tidak reset/menghapus data atau mengubah kredensial/config produksi. Penyelarasan build berikutnya telah mengunduh Gradle/dependensi build dan menghasilkan APK baru di `build/app/outputs/flutter-apk/app-release.apk`. Deploy kode Laravel yang berubah tetap diperlukan sebelum uji integrasi hosting/perangkat. Fitur manual dari commit sebelumnya memerlukan migrasi nullable `2026_11_20_000001_add_manual_completion_to_transaction_details.php`; keberadaannya di hosting belum diperiksa atau diterapkan pada tahap ini. Jangan memakai `migrate:fresh`/`db:wipe`.
 
 Nominal otomatis diuji dengan simulasi ketikan IME, perubahan tagihan, pengambilan sebagian/terakhir/sudah lunas, batas nominal dan retry pembayaran. Perilaku keyboard fisik Android/iOS belum diverifikasi. Tahap autofill tidak mengubah database Laragon; tahap tujuan pembayaran menambahkan skema sebagaimana dijelaskan berikut. Tidak menjalankan build Android/Gradle atau mengunduh dependensi.
 
